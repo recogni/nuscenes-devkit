@@ -38,7 +38,7 @@ class DetectionEval:
     def __init__(self,
                  gt_boxes,
                  pred_boxes,
-                 verbose: bool = True):
+                 verbose: bool = False):
 
         self.verbose = verbose
 
@@ -152,7 +152,7 @@ class DetectionEval:
 
         return boxes
 
-    def __call__(self, min_z, max_z, dist_thresholds, tp_dist_threshold, verbose=False) -> Dict[str, Any]:
+    def __call__(self, min_z, max_z, dist_thresholds, tp_dist_threshold) -> Dict[str, Any]:
         """
         Main function that loads the evaluation code, visualizes samples, runs the evaluation.
         :return: A dict that stores the high-level metrics and meta data.
@@ -163,7 +163,7 @@ class DetectionEval:
 
         metrics_summary = metrics.serialize()
 
-        if verbose:
+        if self.verbose:
             # Print per-class metrics.
             print('Object Class\tAP\tATE\tASE\tAOE')
             class_aps = metrics_summary[self.AP_ERRORS]
@@ -211,9 +211,9 @@ def read_detections(path):
 if __name__ == "__main__":
     # Test eval code.
     gt_boxes, pred_boxes = read_detections("/home/alok/yolo-export-pred")
-    nusc_eval = DetectionEval(gt_boxes=gt_boxes, pred_boxes=pred_boxes)
+    nusc_eval = DetectionEval(gt_boxes=gt_boxes, pred_boxes=pred_boxes, verbose=False)
     for min_z, max_z in zip([0, 20, 40, 60, 80, 0], [20, 40, 60, 80, 100, 100]):
         ap_thresholds = list(np.linspace(0.50, max_z*0.05, num=4))
         print("AP_thresholds: ", ap_thresholds)
         print(f"min_z: {min_z}, max_z: {max_z}")
-        metrics_summary = nusc_eval(min_z=min_z, max_z=max_z, dist_thresholds=ap_thresholds, tp_dist_threshold=4.0, verbose=True)
+        metrics_summary = nusc_eval(min_z=min_z, max_z=max_z, dist_thresholds=ap_thresholds, tp_dist_threshold=4.0)
