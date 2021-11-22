@@ -1,26 +1,28 @@
-# nuScenes dev-kit.
-# Original code written by Holger Caesar & Oscar Beijbom, 2018.
-# Edited for internal usage.
+# nuScenes dev-kit eval wrapper copied from python-sdk/nuscenes/eval/detection/evaluate.py.
+# Original code written by Holger Caesar & Oscar Beijbom, 2018. Edited for internal usage.
 
+from typing import List
 from pyquaternion import Quaternion
 from typing import Tuple, Dict, Any
 from glob import glob
 import numpy as np
 from copy import deepcopy
+import os
 
 from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
-from nuscenes.eval.detection.constants import TP_METRICS
+from nuscenes.eval.detection.constants import TP_METRICS, DETECTION_NAMES
 from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, DetectionBox, \
     DetectionMetricDataList
 
-class DetectionEval:
+
+class DetectionEvalWrapper:
     """
     This is the un-official nuScenes detection evaluation code.
 
     nuScenes uses the following detection metrics:
     - Mean Average Precision (mAP): Uses center-distance as matching criterion; averaged over distance thresholds.
-    - True Positive (TP) metrics: Average of translation, velocity, scale.
+    - True Positive (TP) metrics: Average of translation, scale, orientation.
     - nuScenes Detection Score (NDS): The weighted sum of the above.
 
     We assume that:
@@ -36,12 +38,19 @@ class DetectionEval:
     ORIENTATION_ERROR = "orient_err"
 
     def __init__(self,
-                 gt_boxes,
-                 pred_boxes,
+                 gt_boxes: EvalBoxes,
+                 pred_boxes: EvalBoxes,
                  verbose: bool = False):
+        """
+        Init method.
+        :param gt_boxes: Ground Truth boxes.
+        :param pred_boxes: Predicted boxes.
+        :param verbose: Specify as true to print intermediate logs to stdout.
+        """
 
         self.verbose = verbose
 
+        # todo|note class ranges are not used. The range can be specified in the __call__ args.
         self.cfg = DetectionConfig(class_range={
             "car": 100,
             "truck": 100,
@@ -58,9 +67,9 @@ class DetectionEval:
         min_recall=0.1,
         min_precision=0.1,
         max_boxes_per_sample=500,
-        dist_ths=[0.0],  # not used
-        dist_th_tp=0.0,  # not used
-        mean_ap_weight=0,  # not used
+        dist_ths=[0.0],  # todo|note not used
+        dist_th_tp=0.0,  # todo|note not used
+        mean_ap_weight=0,  # todo|note not used
     )
 
         # Load data.
@@ -73,9 +82,13 @@ class DetectionEval:
         assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens), \
             "Samples in split doesn't match samples in predictions."
 
-    def _evaluate(self, min_z, max_z, dist_ths, tp_dist_th) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
+    def _evaluate(self, min_z: float, max_z: float, dist_ths: List[float], tp_dist_th: float) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
         """
         Performs the actual evaluation.
+        :param min_z: Min allowed Z. Filters boxes whose Z value is less than this.
+        :param max_z: Max allowed Z. Filter boxes whose Z value is more than this.
+        :param dist_ths: Distance thresholds needed for matching GT to predictions, and then APs are averaged.
+        :param tp_dist_th: Threshold for the true positive metric.
         :return: A tuple of high-level and the raw metric data.
         """
         dist_ths_ = deepcopy(dist_ths)
@@ -85,8 +98,8 @@ class DetectionEval:
         # -----------------------------------
         # Step 0: Filter boxes for the specified range.
         # -----------------------------------
-        pred_boxes = self._filter_boxes(self.pred_boxes, min_z=min_z, max_z=max_z, verbose=False)
-        gt_boxes = self._filter_boxes(self.gt_boxes, min_z=min_z, max_z=max_z, verbose=False)
+        pred_boxes = self._filter_boxes(self.pred_boxes, min_z=min_z, max_z=max_z, verbose=self.verbose)
+        gt_boxes = self._filter_boxes(self.gt_boxes, min_z=min_z, max_z=max_z, verbose=self.verbose)
 
         # -----------------------------------
         # Step 1: Accumulate metric data for all classes and distance thresholds.
@@ -131,9 +144,10 @@ class DetectionEval:
                       max_z: float,
                       verbose: bool = False) -> EvalBoxes:
         """
-        Applies filtering to boxes. Distance, bike-racks and points per box.
-        :param boxes: An instance of the EvalBoxes class.
-        :param max_z: Maps the detection name to the eval distance threshold for that class.
+        Applies filtering to boxes based on the Z value.
+        :param boxes: An instance of the EvalBoxes class to be filtered.
+        :param min_z: Min allowed Z.
+        :param max_z: Max allowed Z.
         :param verbose: Whether to print to stdout.
         """
         boxes = deepcopy(boxes)
@@ -152,9 +166,13 @@ class DetectionEval:
 
         return boxes
 
-    def __call__(self, min_z, max_z, dist_thresholds, tp_dist_threshold) -> Dict[str, Any]:
+    def __call__(self, min_z: float, max_z: float, dist_thresholds: List[float], tp_dist_threshold: float) -> Dict[str, Any]:
         """
         Main function that loads the evaluation code, visualizes samples, runs the evaluation.
+        :param min_z: Min allowed Z. Filters boxes whose Z value is less than this.
+        :param max_z: Max allowed Z. Filter boxes whose Z value is more than this.
+        :param dist_thresholds: Distance thresholds needed for matching GT to predictions, and then APs are averaged.
+        :param tp_dist_threshold: Threshold for the true positive metric.
         :return: A dict that stores the high-level metrics and meta data.
         """
 
@@ -181,25 +199,27 @@ class DetectionEval:
 def read_detections(path):
     # debug code to read predictions and gt from npy files.
     filenames = glob(path + "/*.npy")
-    gt_boxes = EvalBoxes()
-    pred_boxes = EvalBoxes()
+    if len(filenames) <= 0:
+        raise ValueError(f"'{path}' does not exists, or does not contain .npy files.")
+
+    gt_boxes, pred_boxes = EvalBoxes(), EvalBoxes()
     for filename in filenames:
-        data = np.load(filename, allow_pickle=True).item()
-        gt_boxes_list, pred_boxes_list  = [], []
+        data: Dict[str, Any] = np.load(filename, allow_pickle=True).item()
+        gt_boxes_list, pred_boxes_list = [], []
         for i in range(data["gt_boxes"].shape[0]):
-            if data["gt_boxes"][i][3] > 0.0 and data["gt_class"][i].lower() in ["car", "pedestrian"] and data["gt_boxes"][i][2] > 0.0:
+            if data["gt_boxes"][i][3] > 0.0 and data["gt_class"][i].lower() in DETECTION_NAMES:
                 gt_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
                                                   translation=data["gt_boxes"][i][:3],
                                                   size=data["gt_boxes"][i][3:6],
-                                                  rotation=Quaternion(axis=[0, 0, 1], angle=data["gt_boxes"][i][6]).elements,
+                                                  rotation=Quaternion(axis=[0, 0, 1], radians=data["gt_boxes"][i][6]).q,
                                                   detection_name=data["gt_class"][i].lower()))
 
         for i in range(data["pred_boxes"].shape[0]):
-            if data["pred_class"][i].lower() in ["car", "pedestrian"] and data["pred_boxes"][i][2] > 0.0:
+            if data["pred_class"][i].lower() in DETECTION_NAMES:
                 pred_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
                                                     translation=data["pred_boxes"][i][:3],
                                                     size=data["pred_boxes"][i][3:6],
-                                                    rotation=Quaternion(axis=[0, 0, 1], angle=data["pred_boxes"][i][6]).elements,
+                                                    rotation=Quaternion(axis=[0, 0, 1], radians=data["pred_boxes"][i][6]).q,
                                                     detection_name=data["pred_class"][i].lower(),
                                                     detection_score=float(data["pred_conf"][i])))
 
@@ -208,12 +228,18 @@ def read_detections(path):
 
     return gt_boxes, pred_boxes
 
+
 if __name__ == "__main__":
-    # Test eval code.
-    gt_boxes, pred_boxes = read_detections("/home/alok/yolo-export-pred")
-    nusc_eval = DetectionEval(gt_boxes=gt_boxes, pred_boxes=pred_boxes, verbose=False)
-    for min_z, max_z in zip([0, 20, 40, 60, 80, 0], [20, 40, 60, 80, 100, 100]):
-        ap_thresholds = list(np.linspace(0.50, max_z*0.05, num=4))
-        print("AP_thresholds: ", ap_thresholds)
-        print(f"min_z: {min_z}, max_z: {max_z}")
-        metrics_summary = nusc_eval(min_z=min_z, max_z=max_z, dist_thresholds=ap_thresholds, tp_dist_threshold=4.0)
+    # Try eval code.
+
+    # todo|note specify the path which has numpy files with predictions and gt data.
+    #  for details about what the .npy files should contain, see the :func:`read_detections`.
+    _gt_boxes, _pred_boxes = read_detections("specify path here")
+
+    nusc_eval = DetectionEvalWrapper(gt_boxes=_gt_boxes, pred_boxes=_pred_boxes, verbose=True)
+
+    for _min_z, _max_z in zip([0, 20, 40, 60, 80, 0], [20, 40, 60, 80, 100, 100]):
+        ap_thresholds = list(np.linspace(0.50, _max_z*0.05, num=4))
+        print(f"Range of prediction and detections: min_z: {_min_z}, max_z: {_max_z}")
+        print(f"AP_thresholds: {ap_thresholds}")
+        metrics_summary = nusc_eval(min_z=_min_z, max_z=_max_z, dist_thresholds=ap_thresholds, tp_dist_threshold=4.0)
