@@ -82,24 +82,24 @@ class DetectionEvalWrapper:
         assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens), \
             "Samples in split doesn't match samples in predictions."
 
-    def _evaluate(self, min_z: float, max_z: float, dist_ths: List[float], tp_dist_th: float) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
+    def _evaluate(self, min_z: float, max_z: float, rel_dist_ths: List[float], rel_tp_dist_th: float) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
         """
         Performs the actual evaluation.
         :param min_z: Min allowed Z. Filters boxes whose Z value is less than this.
         :param max_z: Max allowed Z. Filter boxes whose Z value is more than this.
-        :param dist_ths: Distance thresholds needed for matching GT to predictions, and then APs are averaged.
-        :param tp_dist_th: Threshold for the true positive metric.
+        :param rel_dist_ths: Relative distance thresholds needed for matching GT to predictions, and then APs are averaged.
+        :param rel_tp_dist_th: Relative distance Threshold for the true positive metric.
         :return: A tuple of high-level and the raw metric data.
         """
-        dist_ths_ = deepcopy(dist_ths)
-        if tp_dist_th not in dist_ths:
-            dist_ths_.append(tp_dist_th)
+        rel_dist_ths_ = deepcopy(rel_dist_ths)
+        if rel_tp_dist_th not in rel_dist_ths:
+            rel_dist_ths_.append(rel_tp_dist_th)
 
         # -----------------------------------
         # Step 0: Filter boxes for the specified range.
         # -----------------------------------
-        pred_boxes = self._filter_boxes(self.pred_boxes, min_z=min_z, max_z=max_z, verbose=self.verbose)
         gt_boxes = self._filter_boxes(self.gt_boxes, min_z=min_z, max_z=max_z, verbose=self.verbose)
+        pred_boxes = self._filter_boxes(self.pred_boxes, min_z=min_z, max_z=max_z, verbose=self.verbose)
 
         # -----------------------------------
         # Step 1: Accumulate metric data for all classes and distance thresholds.
@@ -108,9 +108,9 @@ class DetectionEvalWrapper:
             print('Accumulating metric data...')
         metric_data_list = DetectionMetricDataList()
         for class_name in self.cfg.class_names:
-            for dist_th in dist_ths_:
-                md = accumulate(gt_boxes, pred_boxes, class_name, self.cfg.dist_fcn_callable, dist_th)
-                metric_data_list.set(class_name, dist_th, md)
+            for rel_dist_th in rel_dist_ths_:
+                md = accumulate(gt_boxes, pred_boxes, class_name, self.cfg.dist_fcn_callable, rel_dist_th)
+                metric_data_list.set(class_name, rel_dist_th, md)
 
         # -----------------------------------
         # Step 2: Calculate metrics from the data.
@@ -120,14 +120,14 @@ class DetectionEvalWrapper:
         metrics = DetectionMetrics(self.cfg)
         for class_name in self.cfg.class_names:
             # Compute APs.
-            for dist_th in dist_ths:
-                metric_data = metric_data_list[(class_name, dist_th)]
+            for rel_dist_th in rel_dist_ths:
+                metric_data = metric_data_list[(class_name, rel_dist_th)]
                 ap = calc_ap(metric_data, self.cfg.min_recall, self.cfg.min_precision)
-                metrics.add_label_ap(class_name, dist_th, ap)
+                metrics.add_label_ap(class_name, rel_dist_th, ap)
 
             # Compute TP metrics.
             for metric_name in TP_METRICS:
-                metric_data = metric_data_list[(class_name, tp_dist_th)]
+                metric_data = metric_data_list[(class_name, rel_tp_dist_th)]
                 if class_name in ['traffic_cone'] and metric_name in ['attr_err', 'vel_err', 'orient_err']:
                     tp = np.nan
                 elif class_name in ['barrier'] and metric_name in ['attr_err', 'vel_err']:
@@ -157,7 +157,7 @@ class DetectionEvalWrapper:
             # Filter on distance.
             total += len(boxes[sample_token])
             boxes.boxes[sample_token] = [box for box in boxes[sample_token] if
-                                         max_z >= box.translation[2] >= min_z]
+                                         max_z >= box.translation[1] >= min_z]
             dist_filter += len(boxes[sample_token])
 
         if verbose:
@@ -166,18 +166,18 @@ class DetectionEvalWrapper:
 
         return boxes
 
-    def __call__(self, min_z: float, max_z: float, dist_thresholds: List[float], tp_dist_threshold: float) -> Dict[str, Any]:
+    def __call__(self, min_z: float, max_z: float, rel_dist_thresholds: List[float], rel_tp_dist_threshold: float) -> Dict[str, Any]:
         """
         Main function that loads the evaluation code, visualizes samples, runs the evaluation.
         :param min_z: Min allowed Z. Filters boxes whose Z value is less than this.
         :param max_z: Max allowed Z. Filter boxes whose Z value is more than this.
-        :param dist_thresholds: Distance thresholds needed for matching GT to predictions, and then APs are averaged.
-        :param tp_dist_threshold: Threshold for the true positive metric.
+        :param rel_dist_thresholds: Relative distance thresholds needed for matching GT to predictions, and then APs are averaged.
+        :param rel_tp_dist_threshold: Relative distance threshold for the true positive metric.
         :return: A dict that stores the high-level metrics and meta data.
         """
 
         # Run evaluation.
-        metrics, metric_data_list = self._evaluate(min_z=min_z, max_z=max_z, dist_ths=dist_thresholds, tp_dist_th=tp_dist_threshold)
+        metrics, metric_data_list = self._evaluate(min_z=min_z, max_z=max_z, rel_dist_ths=rel_dist_thresholds, rel_tp_dist_th=rel_tp_dist_threshold)
 
         metrics_summary = metrics.serialize()
 
@@ -207,17 +207,17 @@ def read_detections(path):
         data: Dict[str, Any] = np.load(filename, allow_pickle=True).item()
         gt_boxes_list, pred_boxes_list = [], []
         for i in range(data["gt_boxes"].shape[0]):
-            if data["gt_boxes"][i][3] > 0.0 and data["gt_class"][i].lower() in DETECTION_NAMES:
+            if np.all(data["gt_boxes"][i][3:6] > 0.0) and data["gt_boxes"][i][2] > 0.0 and data["gt_class"][i].lower() in DETECTION_NAMES:
                 gt_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
-                                                  translation=data["gt_boxes"][i][:3],
+                                                  translation=(data["gt_boxes"][i][0], data["gt_boxes"][i][2], data["gt_boxes"][i][1]),
                                                   size=data["gt_boxes"][i][3:6],
                                                   rotation=Quaternion(axis=[0, 0, 1], radians=data["gt_boxes"][i][6]).q,
                                                   detection_name=data["gt_class"][i].lower()))
 
         for i in range(data["pred_boxes"].shape[0]):
-            if data["pred_class"][i].lower() in DETECTION_NAMES:
+            if np.all(data["pred_boxes"][i][3:6] > 0.0) and data["pred_boxes"][i][2] > 0.0 and data["pred_class"][i].lower() in DETECTION_NAMES:
                 pred_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
-                                                    translation=data["pred_boxes"][i][:3],
+                                                    translation=(data["pred_boxes"][i][0], data["pred_boxes"][i][2], data["pred_boxes"][i][1]),
                                                     size=data["pred_boxes"][i][3:6],
                                                     rotation=Quaternion(axis=[0, 0, 1], radians=data["pred_boxes"][i][6]).q,
                                                     detection_name=data["pred_class"][i].lower(),
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     nusc_eval = DetectionEvalWrapper(gt_boxes=_gt_boxes, pred_boxes=_pred_boxes, verbose=True)
 
     for _min_z, _max_z in zip([0, 20, 40, 60, 80, 0], [20, 40, 60, 80, 100, 100]):
-        ap_thresholds = list(np.linspace(0.50, _max_z*0.05, num=4))
+        rel_ap_thresholds = [0.05]
         print(f"Range of prediction and detections: min_z: {_min_z}, max_z: {_max_z}")
-        print(f"AP_thresholds: {ap_thresholds}")
-        metrics_summary = nusc_eval(min_z=_min_z, max_z=_max_z, dist_thresholds=ap_thresholds, tp_dist_threshold=4.0)
+        print(f"relative AP_thresholds: {rel_ap_thresholds}")
+        metrics_summary = nusc_eval(min_z=_min_z, max_z=_max_z, rel_dist_thresholds=rel_ap_thresholds, rel_tp_dist_threshold=0.05)
