@@ -14,7 +14,7 @@ def accumulate(gt_boxes: EvalBoxes,
                pred_boxes: EvalBoxes,
                class_name: str,
                dist_fcn: Callable,
-               dist_th: float,
+               rel_dist_th: float,
                verbose: bool = False) -> DetectionMetricData:
     """
     Average Precision over predefined different recall thresholds for a single distance threshold.
@@ -23,7 +23,7 @@ def accumulate(gt_boxes: EvalBoxes,
     :param pred_boxes: Maps every sample_token to a list of its sample_results.
     :param class_name: Class to compute AP on.
     :param dist_fcn: Distance function used to match detections and ground truths.
-    :param dist_th: Distance threshold for a match.
+    :param rel_dist_th: Relative distance threshold based on GT box depth for a match.
     :param verbose: If true, print debug messages.
     :return: (average_prec, metrics). The average precision value and raw data for a number of metrics.
     """
@@ -84,8 +84,14 @@ def accumulate(gt_boxes: EvalBoxes,
                     min_dist = this_distance
                     match_gt_idx = gt_idx
 
-        # If the closest match is close enough according to threshold we have a match!
-        is_match = min_dist < dist_th
+        # If the closest match is close enough according to relative threshold we have a match!
+        is_match = (match_gt_idx is not None) and (min_dist < (gt_boxes[pred_box.sample_token][match_gt_idx].translation[1] * rel_dist_th) or min_dist < 0.25)
+
+        if verbose:
+            if match_gt_idx and not is_match:
+                print(f"was not a match because distance is {min_dist} and threshold is {gt_boxes[pred_box.sample_token][match_gt_idx].translation[1] * rel_dist_th}")
+            if is_match:
+                print(f"Is a match because distance is {min_dist} and threshold is {gt_boxes[pred_box.sample_token][match_gt_idx].translation[1] * rel_dist_th}")
 
         if is_match:
             taken.add((pred_box.sample_token, match_gt_idx))
