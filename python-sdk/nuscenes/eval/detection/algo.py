@@ -59,7 +59,7 @@ def match_boxes(
                 raise ValueError("Specify either 'rel_dist_th' or 'dist_th'.")
             return is_match
 
-        if is_match(min_dist, gt_boxes[pred_box.sample_token][gt_idx]):
+        if is_match(min_dist, gt_boxes[pred_box.sample_token][gt_idx].translation[1]):
             taken.add((pred_box.sample_token, match_gt_idx))
             # Since it is a match, update match data also.
             gt_box_match = gt_boxes[pred_box.sample_token][match_gt_idx]
