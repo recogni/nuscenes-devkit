@@ -95,7 +95,7 @@ class TestAlgo(unittest.TestCase):
             gt, pred = self._mock_results(30, 3, 25, class_name)
             for dist_th in self.cfg.dist_ths:
                 acc = accumulate(gt, pred, class_name, center_distance, dist_th=dist_th)
-                matches = match_boxes(gt, pred, dist_th=dist_th)
+                matches = match_boxes(gt, pred, dist_th=dist_th, dist_fcn=center_distance)
                 new_acc = stats_from_matches(matches, class_name)
                 for name in ["attr_err", "confidence",
                              "orient_err", "precision", "recall", "scale_err",

@@ -144,7 +144,7 @@ class BoxMatch:
         else:
             raise ValueError("Both gt and pred are None.")
 
-        return chosen.translation[:1]
+        return chosen.translation[1]
 
 
 
