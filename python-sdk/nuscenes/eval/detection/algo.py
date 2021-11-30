@@ -275,7 +275,6 @@ def accumulate(gt_boxes: EvalBoxes,
     # ---------------------------------------------
 
     # Accumulate.
-    stats = {"tp": tp, "fp": fp, "conf": conf, "match_data_before": copy.deepcopy(match_data)}
     tp = np.cumsum(tp).astype(float)
     fp = np.cumsum(fp).astype(float)
     conf = np.array(conf)
@@ -314,7 +313,7 @@ def accumulate(gt_boxes: EvalBoxes,
                                vel_err=match_data['vel_err'],
                                scale_err=match_data['scale_err'],
                                orient_err=match_data['orient_err'],
-                               attr_err=match_data['attr_err']), stats
+                               attr_err=match_data['attr_err'])
 
 
 def calc_ap(md: DetectionMetricData, min_recall: float, min_precision: float) -> float:
