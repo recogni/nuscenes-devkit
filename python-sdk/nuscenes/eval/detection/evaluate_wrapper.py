@@ -11,6 +11,7 @@ import os
 
 from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.detection.algo import calc_ap, calc_tp, match_boxes, stats_from_matches
+from nuscenes.eval.common.utils import center_distance
 from nuscenes.eval.detection.constants import TP_METRICS, DETECTION_NAMES
 from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, DetectionBox, \
     DetectionMetricDataList
@@ -108,7 +109,7 @@ class DetectionEvalWrapper:
             print('Accumulating metric data...')
         metric_data_list = DetectionMetricDataList()
         for rel_dist_th in rel_dist_ths_:
-            matches = match_boxes(gt_boxes, pred_boxes, rel_dist_th=rel_dist_th)
+            matches = match_boxes(gt_boxes, pred_boxes, dist_fcn=center_distance, rel_dist_th=rel_dist_th)
             for class_name in self.cfg.class_names:
                 md = stats_from_matches(matches, class_name)
                 metric_data_list.set(class_name, rel_dist_th, md)
