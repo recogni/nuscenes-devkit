@@ -81,10 +81,11 @@ def stats_from_matches(
         verbose: Optional[bool] = False
 ) -> DetectionMetricData:
     """
+    Computes the same stats as accumulate, but from matched boxes.
 
     :param matched_boxes:  The pre-matched boxes, generally from match_boxes
     :param class_name: Class to compute AP on.
-    :return:
+    :return: metrics. The raw data for a number of metrics.
     """
     # Count the positives.
     class_boxes = [box for box in matched_boxes if box.detection_name == class_name]
