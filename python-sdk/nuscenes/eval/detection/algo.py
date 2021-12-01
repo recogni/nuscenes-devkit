@@ -9,6 +9,7 @@ from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.common.utils import center_distance, scale_iou, yaw_diff, velocity_l2, attr_acc, cummean
 from nuscenes.eval.detection.data_classes import DetectionMetricData, BoxMatch
 
+
 def match_boxes(
         gt_boxes: EvalBoxes,
         pred_boxes: EvalBoxes,
@@ -22,11 +23,13 @@ def match_boxes(
     :param gt_boxes: The GT boxes from the dataset
     :param pred_boxes: The predicted boxes from the ego vehicle
     :param dist_fcn: Distance function used to match detections and ground truths.
-    :param rel_dist_th: Relative distance threshold based on GT box depth for a match. Specify either this or rel_dist_th
-    :param dist_th: Distance threshold based on GT box depth for a match. Specify either this or dist_th.
+    :param rel_dist_th: Relative distance threshold based on GT box depth for a match. A box is a match if it fulfills
+        either the relative or absolute distance threshold.
+    :param dist_th: Distance threshold based on GT box depth for a match. A box is a match if it fulfills
+        either the relative or absolute distance threshold.
     :return: Matched boxes. These are matched based on both class name and distance.
     """
-    assert (rel_dist_th is None) != (dist_th is None), "Specify exactly one of rel_dist_th or dist_th"
+    assert (rel_dist_th is not None) or (dist_th is not None), "Specify exactly at least one of rel_dist_th or dist_th"
     # Organize the predictions in a single list.
     pred_confs = [box.detection_score for box in pred_boxes.all]
 
@@ -50,14 +53,13 @@ def match_boxes(
 
         # If the closest match is close enough according to threshold we have a match!
         def is_match(proposal_dist, dist_to_ego):
+            match = False
             if rel_dist_th is not None:
                 # Just using y distance, similar to the distance metrics
-                is_match = (match_gt_idx is not None) and (proposal_dist < (dist_to_ego * rel_dist_th) or proposal_dist < 0.25)
-            elif dist_th is not None:
-                is_match = proposal_dist < dist_th
-            else:
-                raise ValueError("Specify either 'rel_dist_th' or 'dist_th'.")
-            return is_match
+                match = match or proposal_dist < (dist_to_ego * rel_dist_th)
+            if dist_th is not None:
+                match = match or proposal_dist < dist_th
+            return match
 
         if is_match(min_dist, gt_boxes[pred_box.sample_token][gt_idx].translation[1]):
             taken.add((pred_box.sample_token, match_gt_idx))

@@ -109,7 +109,8 @@ class DetectionEvalWrapper:
             print('Accumulating metric data...')
         metric_data_list = DetectionMetricDataList()
         for rel_dist_th in rel_dist_ths_:
-            matches = match_boxes(gt_boxes, pred_boxes, dist_fcn=center_distance, rel_dist_th=rel_dist_th)
+            matches = match_boxes(gt_boxes, pred_boxes, dist_fcn=center_distance, rel_dist_th=rel_dist_th,
+                                  dist_th=0.25)
             for class_name in self.cfg.class_names:
                 md = stats_from_matches(matches, class_name)
                 metric_data_list.set(class_name, rel_dist_th, md)
