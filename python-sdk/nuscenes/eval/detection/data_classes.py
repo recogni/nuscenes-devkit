@@ -1,14 +1,151 @@
 # nuScenes dev-kit.
 # Code written by Oscar Beijbom, 2019.
-
+import dataclasses
 from collections import defaultdict
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import numpy as np
 
 from nuscenes.eval.common.data_classes import MetricData, EvalBox
 from nuscenes.eval.common.utils import center_distance
 from nuscenes.eval.detection.constants import DETECTION_NAMES, ATTRIBUTE_NAMES, TP_METRICS
+
+class DetectionBox(EvalBox):
+    """ Data class used during detection evaluation. Can be a prediction or ground truth."""
+
+    def __init__(self,
+                 sample_token: str = "",
+                 translation: Tuple[float, float, float] = (0, 0, 0),
+                 size: Tuple[float, float, float] = (0, 0, 0),
+                 rotation: Tuple[float, float, float, float] = (0, 0, 0, 0),
+                 velocity: Tuple[float, float] = (0, 0),
+                 ego_translation: [float, float, float] = (0, 0, 0),  # Translation to ego vehicle in meters.
+                 num_pts: int = -1,  # Nbr. LIDAR or RADAR inside the box. Only for gt boxes.
+                 detection_name: str = 'car',  # The class name used in the detection challenge.
+                 detection_score: float = -1.0,  # GT samples do not have a score.
+                 attribute_name: str = ''):  # Box attribute. Each box can have at most 1 attribute.
+
+        super().__init__(sample_token, translation, size, rotation, velocity, ego_translation, num_pts)
+
+        assert detection_name is not None, 'Error: detection_name cannot be empty!'
+        assert detection_name in DETECTION_NAMES, 'Error: Unknown detection_name %s' % detection_name
+
+        assert attribute_name in ATTRIBUTE_NAMES or attribute_name == '', \
+            'Error: Unknown attribute_name %s' % attribute_name
+
+        assert type(detection_score) == float, 'Error: detection_score must be a float!'
+        assert not np.any(np.isnan(detection_score)), 'Error: detection_score may not be NaN!'
+
+        # Assign.
+        self.detection_name = detection_name
+        self.detection_score = detection_score
+        self.attribute_name = attribute_name
+
+    def __eq__(self, other):
+        return (self.sample_token == other.sample_token and
+                self.translation == other.translation and
+                self.size == other.size and
+                self.rotation == other.rotation and
+                self.velocity == other.velocity and
+                self.ego_translation == other.ego_translation and
+                self.num_pts == other.num_pts and
+                self.detection_name == other.detection_name and
+                self.detection_score == other.detection_score and
+                self.attribute_name == other.attribute_name)
+
+    def serialize(self) -> dict:
+        """ Serialize instance into json-friendly format. """
+        return {
+            'sample_token': self.sample_token,
+            'translation': self.translation,
+            'size': self.size,
+            'rotation': self.rotation,
+            'velocity': self.velocity,
+            'ego_translation': self.ego_translation,
+            'num_pts': self.num_pts,
+            'detection_name': self.detection_name,
+            'detection_score': self.detection_score,
+            'attribute_name': self.attribute_name
+        }
+
+    @classmethod
+    def deserialize(cls, content: dict):
+        """ Initialize from serialized content. """
+        return cls(sample_token=content['sample_token'],
+                   translation=tuple(content['translation']),
+                   size=tuple(content['size']),
+                   rotation=tuple(content['rotation']),
+                   velocity=tuple(content['velocity']),
+                   ego_translation=(0.0, 0.0, 0.0) if 'ego_translation' not in content
+                   else tuple(content['ego_translation']),
+                   num_pts=-1 if 'num_pts' not in content else int(content['num_pts']),
+                   detection_name=content['detection_name'],
+                   detection_score=-1.0 if 'detection_score' not in content else float(content['detection_score']),
+                   attribute_name=content['attribute_name'])
+
+
+@dataclasses.dataclass
+class BoxMatch:
+    """
+    Represents a matching between a gt and a pred DetectionBox.
+
+    Either of these might be None, representing FP/FN detections.
+    """
+
+    gt: Optional[DetectionBox]
+    pred: Optional[DetectionBox]
+
+    @property
+    def detection_name(self) -> str:
+        """Gives the class name of this detection match."""
+        if self.has_gt:
+            return self.gt.detection_name
+        return self.pred.detection_name
+
+    @property
+    def detection_score(self) -> float:
+        """Gives the class name of this detection match."""
+        if self.has_pred:
+            return self.pred.detection_score
+        return 0.0
+
+    @property
+    def has_gt(self) -> bool:
+        """Indicator on whether this has a GT."""
+        return self.gt is not None
+
+    @property
+    def has_pred(self) -> bool:
+        """Indicator on whether this has a Pred."""
+        return self.pred is not None
+
+    @property
+    def tp(self) -> bool:
+        """Is true positive."""
+        return self.has_gt and self.has_pred
+
+    @property
+    def fp(self) -> bool:
+        """Is false positive."""
+        return not self.has_gt and self.has_pred
+
+    @property
+    def fn(self) -> bool:
+        """Is false negative."""
+        return self.has_gt and not self.has_pred
+
+    def distance_to_ego(self):
+        """Computes the distance to the ego vehicle."""
+
+        if self.gt is not None:
+            chosen = self.gt
+        elif self.pred is not None:
+            chosen = self.pred
+        else:
+            raise ValueError("Both gt and pred are None.")
+
+        return chosen.translation[1]
+
 
 
 class DetectionConfig:
@@ -91,7 +228,8 @@ class DetectionMetricData(MetricData):
                  vel_err: np.array,
                  scale_err: np.array,
                  orient_err: np.array,
-                 attr_err: np.array):
+                 attr_err: np.array,
+                 ):
 
         # Assert lengths.
         assert len(recall) == self.nelem
@@ -312,78 +450,6 @@ class DetectionMetrics:
         return eq
 
 
-class DetectionBox(EvalBox):
-    """ Data class used during detection evaluation. Can be a prediction or ground truth."""
-
-    def __init__(self,
-                 sample_token: str = "",
-                 translation: Tuple[float, float, float] = (0, 0, 0),
-                 size: Tuple[float, float, float] = (0, 0, 0),
-                 rotation: Tuple[float, float, float, float] = (0, 0, 0, 0),
-                 velocity: Tuple[float, float] = (0, 0),
-                 ego_translation: [float, float, float] = (0, 0, 0),  # Translation to ego vehicle in meters.
-                 num_pts: int = -1,  # Nbr. LIDAR or RADAR inside the box. Only for gt boxes.
-                 detection_name: str = 'car',  # The class name used in the detection challenge.
-                 detection_score: float = -1.0,  # GT samples do not have a score.
-                 attribute_name: str = ''):  # Box attribute. Each box can have at most 1 attribute.
-
-        super().__init__(sample_token, translation, size, rotation, velocity, ego_translation, num_pts)
-
-        assert detection_name is not None, 'Error: detection_name cannot be empty!'
-        assert detection_name in DETECTION_NAMES, 'Error: Unknown detection_name %s' % detection_name
-
-        assert attribute_name in ATTRIBUTE_NAMES or attribute_name == '', \
-            'Error: Unknown attribute_name %s' % attribute_name
-
-        assert type(detection_score) == float, 'Error: detection_score must be a float!'
-        assert not np.any(np.isnan(detection_score)), 'Error: detection_score may not be NaN!'
-
-        # Assign.
-        self.detection_name = detection_name
-        self.detection_score = detection_score
-        self.attribute_name = attribute_name
-
-    def __eq__(self, other):
-        return (self.sample_token == other.sample_token and
-                self.translation == other.translation and
-                self.size == other.size and
-                self.rotation == other.rotation and
-                self.velocity == other.velocity and
-                self.ego_translation == other.ego_translation and
-                self.num_pts == other.num_pts and
-                self.detection_name == other.detection_name and
-                self.detection_score == other.detection_score and
-                self.attribute_name == other.attribute_name)
-
-    def serialize(self) -> dict:
-        """ Serialize instance into json-friendly format. """
-        return {
-            'sample_token': self.sample_token,
-            'translation': self.translation,
-            'size': self.size,
-            'rotation': self.rotation,
-            'velocity': self.velocity,
-            'ego_translation': self.ego_translation,
-            'num_pts': self.num_pts,
-            'detection_name': self.detection_name,
-            'detection_score': self.detection_score,
-            'attribute_name': self.attribute_name
-        }
-
-    @classmethod
-    def deserialize(cls, content: dict):
-        """ Initialize from serialized content. """
-        return cls(sample_token=content['sample_token'],
-                   translation=tuple(content['translation']),
-                   size=tuple(content['size']),
-                   rotation=tuple(content['rotation']),
-                   velocity=tuple(content['velocity']),
-                   ego_translation=(0.0, 0.0, 0.0) if 'ego_translation' not in content
-                   else tuple(content['ego_translation']),
-                   num_pts=-1 if 'num_pts' not in content else int(content['num_pts']),
-                   detection_name=content['detection_name'],
-                   detection_score=-1.0 if 'detection_score' not in content else float(content['detection_score']),
-                   attribute_name=content['attribute_name'])
 
 
 class DetectionMetricDataList:
