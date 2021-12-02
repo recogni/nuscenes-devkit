@@ -95,7 +95,7 @@ def stats_from_matches(
     if verbose:
         print("Found {} GT of class {} out of {}.".
               format(npos, class_name, len(matched_boxes)))
-    class_pred_boxes = [box for box in matched_boxes if box.has_pred]
+    class_pred_boxes = [box for box in class_boxes if box.has_pred]
     matched_tps = [box for box in class_pred_boxes if box.tp]
 
     if len(matched_tps) == 0:
