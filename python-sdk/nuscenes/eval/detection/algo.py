@@ -96,15 +96,12 @@ def stats_from_matches(
         print("Found {} GT of class {} out of {}.".
               format(npos, class_name, len(matched_boxes)))
     class_pred_boxes = [box for box in matched_boxes if box.has_pred]
-    # For missing classes in the GT, return a data structure corresponding to no predictions.
-    if npos == 0:
-        return DetectionMetricData.no_predictions()
-
-    # If we have no detections, return an empty prediction.
-    if not any(box.has_pred for box in class_pred_boxes):
-        return DetectionMetricData.no_predictions()
-
     matched_tps = [box for box in class_pred_boxes if box.tp]
+
+    if len(matched_tps) == 0:
+        # If there are no TP detections at all, we return the corresponding array.
+        return DetectionMetricData.no_predictions()
+
     period = np.pi if class_name == 'barrier' else 2 * np.pi
 
     match_data = {'trans_err': [center_distance(match.gt, match.pred) for match in matched_tps],
