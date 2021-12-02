@@ -61,7 +61,7 @@ def match_boxes(
                 match = match or proposal_dist < dist_th
             return match
 
-        if is_match(min_dist, gt_boxes[pred_box.sample_token][gt_idx].translation[1]):
+        if match_gt_idx is not None and is_match(min_dist, gt_boxes[pred_box.sample_token][match_gt_idx].translation[1]):
             taken.add((pred_box.sample_token, match_gt_idx))
             # Since it is a match, update match data also.
             gt_box_match = gt_boxes[pred_box.sample_token][match_gt_idx]
