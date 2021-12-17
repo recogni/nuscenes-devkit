@@ -314,7 +314,7 @@ class DetectionMetricData(MetricData):
                    trans_err=np.ones(cls.nelem),
                    vel_err=np.ones(cls.nelem),
                    scale_err=np.ones(cls.nelem),
-                   orient_err=np.ones(cls.nelem),
+                   orient_err=np.pi * np.ones(cls.nelem),
                    attr_err=np.ones(cls.nelem))
 
     @classmethod
