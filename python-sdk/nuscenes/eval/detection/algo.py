@@ -130,10 +130,20 @@ def stats_from_matches(
 
         else:
             # For each match_data, we first calculate the accumulated mean.
-            tmp = cummean(np.array(match_data[key]))
+            cummean_val = cummean(np.array(match_data[key]))
 
-            # Then interpolate based on the confidences. (Note reversing since np.interp needs increasing arrays)
-            match_data[key] = np.interp(conf[::-1], match_data['conf'][::-1], tmp[::-1])[::-1]
+            # Then interpolate based on the confidences.
+
+            # If confidence scores of the matched predicted boxes are non unique, we take the mean of the duplicate ones before interpolating.
+            # This is done because np.interp otherwise just takes the last data point which might not be representative of the whole set.
+            match_conf = np.array(match_data['conf'][::-1])
+            unique_match_conf, reverse_idx = np.unique(match_conf, return_inverse=True)
+            val, unique_val = cummean_val[::-1], []
+            for i in range(len(unique_match_conf)):
+                unique_val.append(np.mean(val[reverse_idx == i]))
+
+            # Reversing conf since np.interp needs increasing arrays
+            match_data[key] = np.interp(conf[::-1], unique_match_conf, unique_val)[::-1]
 
     # ---------------------------------------------
     # Done. Instantiate MetricData and return
