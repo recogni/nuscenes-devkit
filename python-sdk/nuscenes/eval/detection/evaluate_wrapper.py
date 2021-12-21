@@ -199,49 +199,17 @@ class DetectionEvalWrapper:
 
         return metrics_summary
 
-def read_detections(path):
-    # debug code to read predictions and gt from npy files.
-    filenames = glob(path + "/*.npy")
-    if len(filenames) <= 0:
-        raise ValueError(f"'{path}' does not exists, or does not contain .npy files.")
-
-    gt_boxes, pred_boxes = EvalBoxes(), EvalBoxes()
-    for filename in filenames:
-        data: Dict[str, Any] = np.load(filename, allow_pickle=True).item()
-        gt_boxes_list, pred_boxes_list = [], []
-        for i in range(data["gt_boxes"].shape[0]):
-            if np.all(data["gt_boxes"][i][3:6] > 0.0) and data["gt_boxes"][i][2] > 0.0 and data["gt_class"][i].lower() in DETECTION_NAMES:
-                gt_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
-                                                  translation=(data["gt_boxes"][i][0], data["gt_boxes"][i][2], data["gt_boxes"][i][1]),
-                                                  size=data["gt_boxes"][i][3:6],
-                                                  rotation=Quaternion(axis=[0, 0, 1], radians=data["gt_boxes"][i][6]).q,
-                                                  detection_name=data["gt_class"][i].lower()))
-
-        for i in range(data["pred_boxes"].shape[0]):
-            if np.all(data["pred_boxes"][i][3:6] > 0.0) and data["pred_boxes"][i][2] > 0.0 and data["pred_class"][i].lower() in DETECTION_NAMES:
-                pred_boxes_list.append(DetectionBox(sample_token=str(data["index"]),
-                                                    translation=(data["pred_boxes"][i][0], data["pred_boxes"][i][2], data["pred_boxes"][i][1]),
-                                                    size=data["pred_boxes"][i][3:6],
-                                                    rotation=Quaternion(axis=[0, 0, 1], radians=data["pred_boxes"][i][6]).q,
-                                                    detection_name=data["pred_class"][i].lower(),
-                                                    detection_score=float(data["pred_conf"][i])))
-
-        gt_boxes.add_boxes(str(data["index"]), gt_boxes_list)
-        pred_boxes.add_boxes(str(data["index"]), pred_boxes_list)
-
-    return gt_boxes, pred_boxes
-
-
 if __name__ == "__main__":
     # Try eval code.
 
     # todo|note specify the path which has numpy files with predictions and gt data.
-    #  for details about what the .npy files should contain, see the :func:`read_detections`.
-    _gt_boxes, _pred_boxes = read_detections("specify path here")
+    # You can find an example here: gs://reco-tf-out/tmp/alok/data-links/data.npy, which has predictions from encoded GT.
+    data = np.load('/numpy/data/path', allow_pickle=True).item()
+    _gt_boxes, _pred_boxes = data['gt'], data['pred']
 
     nusc_eval = DetectionEvalWrapper(gt_boxes=_gt_boxes, pred_boxes=_pred_boxes, verbose=True)
 
-    for _min_z, _max_z in zip([0, 20, 40, 60, 80, 0], [20, 40, 60, 80, 100, 100]):
+    for _min_z, _max_z in zip([0, 0, 20, 40, 60, 80], [100, 20, 40, 60, 80, 100]):
         rel_ap_thresholds = [0.05]
         print(f"Range of prediction and detections: min_z: {_min_z}, max_z: {_max_z}")
         print(f"relative AP_thresholds: {rel_ap_thresholds}")
