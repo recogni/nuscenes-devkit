@@ -203,7 +203,8 @@ if __name__ == "__main__":
     # Try eval code.
 
     # todo|note specify the path which has numpy files with predictions and gt data.
-    data = np.load('/home/alok/data/metric-boxes/data.npy', allow_pickle=True).item()
+    # You can find an example here: gs://reco-tf-out/tmp/alok/data-links/data.npy, which has predictions from encoded GT.
+    data = np.load('/numpy/data/path', allow_pickle=True).item()
     _gt_boxes, _pred_boxes = data['gt'], data['pred']
 
     nusc_eval = DetectionEvalWrapper(gt_boxes=_gt_boxes, pred_boxes=_pred_boxes, verbose=True)
