@@ -84,7 +84,7 @@ class NuScenes:
         # Initialize the colormap which maps from class names to RGB values.
         self.colormap = get_colormap()
 
-        lidar_tasks = [t for t in ['lidarseg', 'panoptic'] if self.fs.exists(os.path.join(self.table_root, t + '.json'))]
+        lidar_tasks = [t for t in ['lidarseg', 'panoptic'] if self.fs.exists(osp.join(self.table_root, t + '.json'))]
         if len(lidar_tasks) > 0:
             self.lidarseg_idx2name_mapping = dict()
             self.lidarseg_name2idx_mapping = dict()
@@ -98,7 +98,7 @@ class NuScenes:
                 self.panoptic = self.__load_table__(lidar_task)
 
             setattr(self, lidar_task, self.__load_table__(lidar_task))
-            label_files = os.listdir(os.path.join(self.dataroot, lidar_task, self.version))
+            label_files = self.fs.listdir(osp.join(self.dataroot, lidar_task, self.version))
             num_label_files = len([name for name in label_files if (name.endswith('.bin') or name.endswith('.npz'))])
             num_lidarseg_recs = len(getattr(self, lidar_task))
             assert num_lidarseg_recs == num_label_files, \
@@ -2000,7 +2000,7 @@ class NuScenesExplorer:
         assert imsize[0] / imsize[1] == 16 / 9, 'Error: Aspect ratio should be 16/9.'
 
         if lidarseg_preds_folder:
-            assert(os.path.isdir(lidarseg_preds_folder)), \
+            assert(self.nusc.fs.isdir(lidarseg_preds_folder)), \
                 'Error:  The lidarseg predictions folder ({}) does not exist.'.format(lidarseg_preds_folder)
 
         save_as_vid = False
@@ -2008,7 +2008,7 @@ class NuScenesExplorer:
             assert render_mode in ['video', 'image'], 'Error: For the renderings to be saved to {}, either `video` ' \
                                                       'or `image` must be specified for render_mode. {} is ' \
                                                       'not a valid mode.'.format(out_folder, render_mode)
-            assert os.path.isdir(out_folder), 'Error: {} does not exist.'.format(out_folder)
+            assert self.nusc.fs.isdir(out_folder), 'Error: {} does not exist.'.format(out_folder)
             if render_mode == 'video':
                 save_as_vid = True
 
@@ -2032,7 +2032,7 @@ class NuScenesExplorer:
             name = None
 
         if save_as_vid:
-            out_path = os.path.join(out_folder, scene_record['name'] + '_' + channel + '.avi')
+            out_path = osp.join(out_folder, scene_record['name'] + '_' + channel + '.avi')
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             out = cv2.VideoWriter(out_path, fourcc, freq, imsize)
         else:
@@ -2047,7 +2047,7 @@ class NuScenesExplorer:
             # Set filename of the image.
             camera_token = sample_record['data'][channel]
             cam = self.nusc.get('sample_data', camera_token)
-            filename = scene_record['name'] + '_' + channel + '_' + os.path.basename(cam['filename'])
+            filename = scene_record['name'] + '_' + channel + '_' + osp.basename(cam['filename'])
 
             # Determine whether to render lidarseg points from ground truth or predictions.
             pointsensor_token = sample_record['data']['LIDAR_TOP']
@@ -2087,7 +2087,7 @@ class NuScenesExplorer:
             if save_as_vid:
                 out.write(mat)
             elif not no_points_in_mat and out_folder:
-                cv2.imwrite(os.path.join(out_folder, filename), mat)
+                cv2.imwrite(osp.join(out_folder, filename), mat)
             else:
                 pass
 
@@ -2138,7 +2138,7 @@ class NuScenesExplorer:
         assert imsize[0] / imsize[1] == 16 / 9, "Aspect ratio should be 16/9."
 
         if lidarseg_preds_folder:
-            assert(os.path.isdir(lidarseg_preds_folder)), \
+            assert(self.nusc.fs.isdir(lidarseg_preds_folder)), \
                 'Error: The lidarseg predictions folder ({}) does not exist.'.format(lidarseg_preds_folder)
 
         # Get records from DB.
@@ -2173,9 +2173,9 @@ class NuScenesExplorer:
         slate = np.ones((2 * imsize[1], 3 * imsize[0], 3), np.uint8)
 
         if out_path:
-            path_to_file, filename = os.path.split(out_path)
-            assert os.path.isdir(path_to_file), 'Error: {} does not exist.'.format(path_to_file)
-            assert os.path.splitext(filename)[-1] == '.avi', 'Error: Video can only be saved in .avi format.'
+            path_to_file, filename = osp.split(out_path)
+            assert self.nusc.fs.isdir(path_to_file), 'Error: {} does not exist.'.format(path_to_file)
+            assert osp.splitext(filename)[-1] == '.avi', 'Error: Video can only be saved in .avi format.'
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             out = cv2.VideoWriter(out_path, fourcc, freq, slate.shape[1::-1])
         else:
