@@ -4,6 +4,7 @@
 import json
 from typing import Dict, Tuple
 
+import fsspec
 import numpy as np
 import tqdm
 from pyquaternion import Quaternion
@@ -30,7 +31,7 @@ def load_prediction(result_path: str, max_boxes_per_sample: int, box_cls, verbos
     """
 
     # Load from file and check that the format is correct.
-    with open(result_path) as f:
+    with fsspec.open(result_path) as f:
         data = json.load(f)
     assert 'results' in data, 'Error: No field `results` in result file. Please note that the result format changed.' \
                               'See https://www.nuscenes.org/object-detection for more information.'
