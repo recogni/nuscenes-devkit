@@ -8,6 +8,7 @@ import random
 import time
 from typing import Tuple, Dict, Any
 
+import fsspec
 import numpy as np
 
 from nuscenes import NuScenes
@@ -58,6 +59,8 @@ class DetectionEval:
         :param verbose: Whether to print to stdout.
         """
         self.nusc = nusc
+        self.fs_res = fsspec.filesystem("gcs" if result_path.startswith("gs://") else "file")
+        self.fs_output_dir = fsspec.filesystem("gcs" if output_dir.startswith("gs://") else "file")
         self.result_path = result_path
         self.eval_set = eval_set
         self.output_dir = output_dir
@@ -65,13 +68,13 @@ class DetectionEval:
         self.cfg = config
 
         # Check result file exists.
-        assert os.path.exists(result_path), 'Error: The result file does not exist!'
+        assert  self.fs_res.exists(result_path), 'Error: The result file does not exist!'
 
         # Make dirs.
         self.plot_dir = os.path.join(self.output_dir, 'plots')
-        if not os.path.isdir(self.output_dir):
+        if not self.fs_output_dir.isdir(self.output_dir):
             os.makedirs(self.output_dir)
-        if not os.path.isdir(self.plot_dir):
+        if not self.fs_output_dir.isdir(self.plot_dir):
             os.makedirs(self.plot_dir)
 
         # Load data.
@@ -189,7 +192,7 @@ class DetectionEval:
 
             # Visualize samples.
             example_dir = os.path.join(self.output_dir, 'examples')
-            if not os.path.isdir(example_dir):
+            if not self.fs_output_dir.isdir(example_dir):
                 os.mkdir(example_dir)
             for sample_token in sample_tokens:
                 visualize_sample(self.nusc,

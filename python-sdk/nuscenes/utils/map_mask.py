@@ -5,6 +5,7 @@ import os.path as osp
 from typing import Tuple, Any
 
 import cv2
+import fsspec
 import numpy as np
 from PIL import Image
 from cachetools import cached, LRUCache
@@ -20,7 +21,8 @@ class MapMask:
         :param img_file: File path to map png file.
         :param resolution: Map resolution in meters.
         """
-        assert osp.exists(img_file), 'map mask {} does not exist'.format(img_file)
+        self.fs = fsspec.filesystem("gcs" if img_file.startswith("gs://") else "file")
+        assert self.fs.exists(img_file), 'map mask {} does not exist'.format(img_file)
         assert resolution >= 0.1, "Only supports down to 0.1 meter resolution."
         self.img_file = img_file
         self.resolution = resolution
@@ -101,7 +103,8 @@ class MapMask:
         :return: <np.int8: image.height, image.width>. The binary mask.
         """
         # Pillow allows us to specify the maximum image size above, whereas this is more difficult in OpenCV.
-        img = Image.open(self.img_file)
+        with self.fs.open(self.img_file, "rb") as f:
+            img = Image.open(f)
 
         # Resize map mask to desired resolution.
         native_resolution = 0.1
