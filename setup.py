@@ -1,41 +1,17 @@
-import os
+from pathlib import Path
 
 import setuptools
 
-with open('../README.md', 'r') as fh:
-    long_description = fh.read()
+package_dir = 'python-sdk'
+setup_dir = Path(__file__).parent / 'setup'
 
 # Since nuScenes 2.0 the requirements are stored in separate files.
-with open('requirements.txt') as f:
-    req_paths = f.read().splitlines()
 requirements = []
-for req_path in req_paths:
+for req_path in (setup_dir / 'requirements.txt').read_text().splitlines():
     if req_path.startswith('#'):
         continue
     req_path = req_path.replace('-r ', '')
-    with open(req_path) as f:
-        requirements += f.read().splitlines()
-
-
-def get_dirlist(_rootdir):
-    dirlist = []
-
-    with os.scandir(_rootdir) as rit:
-        for entry in rit:
-            if not entry.name.startswith('.') and entry.is_dir():
-                dirlist.append(entry.path)
-                dirlist += get_dirlist(entry.path)
-
-    return dirlist
-
-
-# Get subfolders recursively
-os.chdir('..')
-rootdir = 'python-sdk'
-packages = [d.replace('/', '.').replace('{}.'.format(rootdir), '') for d in get_dirlist(rootdir)]
-
-# Filter out Python cache folders
-packages = [p for p in packages if not p.endswith('__pycache__')]
+    requirements += (setup_dir / req_path).read_text().splitlines()
 
 setuptools.setup(
     name='nuscenes-devkit',
@@ -45,12 +21,12 @@ setuptools.setup(
            'et al.',
     author_email='nuscenes@motional.com',
     description='The official devkit of the nuScenes dataset (www.nuscenes.org).',
-    long_description=long_description,
+    long_description=Path('README.md').read_text(),
     long_description_content_type='text/markdown',
     url='https://github.com/nutonomy/nuscenes-devkit',
     python_requires='>=3.6',
     install_requires=requirements,
-    packages=packages,
+    packages=setuptools.find_packages(package_dir),
     package_dir={'': 'python-sdk'},
     package_data={'': ['*.json']},
     include_package_data=True,
