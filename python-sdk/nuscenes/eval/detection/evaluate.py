@@ -42,13 +42,18 @@ class DetectionEval:
 
     Please see https://www.nuscenes.org/object-detection for more details.
     """
-    def __init__(self,
-                 nusc: NuScenes,
-                 config: DetectionConfig,
-                 result_path: str,
-                 eval_set: str,
-                 output_dir: str = None,
-                 verbose: bool = True):
+
+    def __init__(
+        self,
+        nusc: NuScenes,
+        config: DetectionConfig,
+        eval_set,
+        result=None,
+        result_path: str = "",
+        output_dir: str = None,
+        force_eval_subset: bool = False,
+        verbose: bool = True,
+    ):
         """
         Initialize a DetectionEval object.
         :param nusc: A NuScenes object.
@@ -60,32 +65,46 @@ class DetectionEval:
         """
         self.nusc = nusc
         self.fs_res = fsspec.filesystem("gcs" if result_path.startswith("gs://") else "file")
-        self.fs_output_dir = fsspec.filesystem("gcs" if output_dir.startswith("gs://") else "file")
+        self.fs_output_dir = fsspec.filesystem("gcs" if output_dir and output_dir.startswith("gs://") else "file")
         self.result_path = result_path
+        self.result = result
         self.eval_set = eval_set
         self.output_dir = output_dir
         self.verbose = verbose
         self.cfg = config
 
         # Check result file exists.
-        assert  self.fs_res.exists(result_path), 'Error: The result file does not exist!'
+        if result_path:
+            assert self.fs_res.exists(result_path), "Error: The result file does not exist!"
 
         # Make dirs.
-        self.plot_dir = os.path.join(self.output_dir, 'plots')
-        if not self.fs_output_dir.isdir(self.output_dir):
-            os.makedirs(self.output_dir)
-        if not self.fs_output_dir.isdir(self.plot_dir):
-            os.makedirs(self.plot_dir)
+        if self.output_dir:
+            self.plot_dir = os.path.join(self.output_dir, "plots")
+            if not self.fs_output_dir.isdir(self.output_dir):
+                os.makedirs(self.output_dir)
+            if not self.fs_output_dir.isdir(self.plot_dir):
+                os.makedirs(self.plot_dir)
 
         # Load data.
         if verbose:
-            print('Initializing nuScenes detection evaluation')
-        self.pred_boxes, self.meta = load_prediction(self.result_path, self.cfg.max_boxes_per_sample, DetectionBox,
-                                                     verbose=verbose)
+            print("Initializing nuScenes detection evaluation")
+        if result_path:
+            self.pred_boxes, self.meta = load_prediction(
+                self.result_path, self.cfg.max_boxes_per_sample, DetectionBox, verbose=verbose
+            )
+        elif result:
+            self.pred_boxes = result
+
         self.gt_boxes = load_gt(self.nusc, self.eval_set, DetectionBox, verbose=verbose)
 
-        assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens), \
-            "Samples in split doesn't match samples in predictions."
+        if force_eval_subset:
+            eval_boxes_subset = EvalBoxes()
+            for sample_token in self.pred_boxes.sample_tokens:
+                eval_boxes_subset.add_boxes(self.gt_boxes[sample_token])
+            self.gt_boxes = eval_boxes_subset
+        assert set(self.pred_boxes.sample_tokens) == set(
+            self.gt_boxes.sample_tokens
+        ), "Samples in split doesn't match samples in predictions."
 
         # Add center distances.
         self.pred_boxes = add_center_dist(nusc, self.pred_boxes)
@@ -183,7 +202,7 @@ class DetectionEval:
         :param render_curves: Whether to render PR and TP curves to disk.
         :return: A dict that stores the high-level metrics and meta data.
         """
-        if plot_examples > 0:
+        if plot_examples > 0 and self.output_dir:
             # Select a random but fixed subset to plot.
             random.seed(42)
             sample_tokens = list(self.sample_tokens)
