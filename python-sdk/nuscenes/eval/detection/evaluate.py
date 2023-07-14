@@ -8,6 +8,7 @@ import random
 import time
 from typing import Tuple, Dict, Any
 
+import copy
 import fsspec
 import numpy as np
 
@@ -17,8 +18,12 @@ from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.common.loaders import load_prediction, load_gt, add_center_dist, filter_eval_boxes
 from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
 from nuscenes.eval.detection.constants import TP_METRICS
-from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, DetectionBox, \
-    DetectionMetricDataList
+from nuscenes.eval.detection.data_classes import (
+    DetectionConfig,
+    DetectionMetrics,
+    DetectionBox,
+    DetectionMetricDataList,
+)
 from nuscenes.eval.detection.render import summary_plot, class_pr_curve, class_tp_curve, dist_pr_curve, visualize_sample
 
 
@@ -100,7 +105,7 @@ class DetectionEval:
         if force_eval_subset:
             eval_boxes_subset = EvalBoxes()
             for sample_token in self.pred_boxes.sample_tokens:
-                eval_boxes_subset.add_boxes(self.gt_boxes[sample_token])
+                eval_boxes_subset.add_boxes(sample_token, copy.deepcopy(self.gt_boxes[sample_token]))
             self.gt_boxes = eval_boxes_subset
         assert set(self.pred_boxes.sample_tokens) == set(
             self.gt_boxes.sample_tokens
