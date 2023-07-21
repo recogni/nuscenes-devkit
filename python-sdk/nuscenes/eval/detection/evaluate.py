@@ -6,7 +6,7 @@ import json
 import os
 import random
 import time
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
 import copy
 import fsspec
@@ -53,7 +53,7 @@ class DetectionEval:
         nusc: NuScenes,
         config: DetectionConfig,
         eval_set,
-        result=None,
+        result:Optional[EvalBoxes] = None,
         result_path: str = "",
         output_dir: str = None,
         force_eval_subset: bool = False,
@@ -63,8 +63,9 @@ class DetectionEval:
         Initialize a DetectionEval object.
         :param nusc: A NuScenes object.
         :param config: A DetectionConfig object.
-        :param result_path: Path of the nuScenes JSON result file.
         :param eval_set: The dataset split to evaluate on, e.g. train, val or test.
+        :param result: EvalBoxes to use for evaluation agains ground-truth.
+        :param result_path: Path of the nuScenes JSON result file.
         :param output_dir: Folder to save plots and results to.
         :param verbose: Whether to print to stdout.
         """
@@ -97,17 +98,27 @@ class DetectionEval:
             self.pred_boxes, self.meta = load_prediction(
                 self.result_path, self.cfg.max_boxes_per_sample, DetectionBox, verbose=verbose
             )
-        elif result:
+            assert self.pred_boxes.all, f"there are no pred_boxes after load_prediction() from {self.result_path=}"
+        elif result is not None:
             self.pred_boxes = result
+            assert self.pred_boxes.all, "there are no pred_boxes in `result`"
+        else:
+            raise ValueError("need to either specify `result_path` or pass predicted boxes via `result` argument")
 
         self.gt_boxes = load_gt(self.nusc, self.eval_set, DetectionBox, verbose=verbose)
+        assert self.gt_boxes.all, f"there are no gt_boxes after load_gt() with {self.eval_set=}"
 
         if force_eval_subset:
             eval_boxes_subset = EvalBoxes()
             for sample_token in self.pred_boxes.sample_tokens:
-                assert sample_token in self.gt_boxes.sample_tokens, f"got predictions for {sample_token=}, but this token is not among the tokens of the specified {eval_set=} "
+                assert sample_token in self.gt_boxes.sample_tokens, f"got predictions for {sample_token=}, but " \
+                                                                    f"this token is not among the tokens of " \
+                                                                    f"the specified {eval_set=} "
                 eval_boxes_subset.add_boxes(sample_token, copy.deepcopy(self.gt_boxes[sample_token]))
             self.gt_boxes = eval_boxes_subset
+            assert self.gt_boxes.all, f"there are no gt_boxes with force_eval_subset for the " \
+                                      f"tokens {self.pred_boxes.sample_tokens}"
+
         assert set(self.pred_boxes.sample_tokens) == set(
             self.gt_boxes.sample_tokens
         ), "Samples in split doesn't match samples in predictions."
@@ -120,10 +131,11 @@ class DetectionEval:
         if verbose:
             print('Filtering predictions')
         self.pred_boxes = filter_eval_boxes(nusc, self.pred_boxes, self.cfg.class_range, verbose=verbose)
+        assert self.pred_boxes.all, f"there are no pred_boxes after filter_eval_boxes() with {self.cfg.class_range=}"
         if verbose:
             print('Filtering ground truth annotations')
         self.gt_boxes = filter_eval_boxes(nusc, self.gt_boxes, self.cfg.class_range, verbose=verbose)
-
+        assert self.gt_boxes.all, f"there are no gt_boxes after filter_eval_boxes() with {self.cfg.class_range=}"
         self.sample_tokens = self.gt_boxes.sample_tokens
 
     def evaluate(self) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
