@@ -105,6 +105,7 @@ class DetectionEval:
         if force_eval_subset:
             eval_boxes_subset = EvalBoxes()
             for sample_token in self.pred_boxes.sample_tokens:
+                assert sample_token in self.gt_boxes.sample_tokens, f"got predictions for {sample_token=}, but this token is not among the tokens of the specified {eval_set=} "
                 eval_boxes_subset.add_boxes(sample_token, copy.deepcopy(self.gt_boxes[sample_token]))
             self.gt_boxes = eval_boxes_subset
         assert set(self.pred_boxes.sample_tokens) == set(
