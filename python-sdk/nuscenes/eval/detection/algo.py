@@ -1,8 +1,8 @@
 # nuScenes dev-kit.
 # Code written by Oscar Beijbom, 2019.
 import logging
-import copy
 from typing import Callable, List, Optional
+import logging
 
 import numpy as np
 
