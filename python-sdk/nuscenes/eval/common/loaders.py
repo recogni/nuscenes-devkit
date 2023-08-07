@@ -215,7 +215,8 @@ def filter_eval_boxes(nusc: NuScenes,
     :param nusc: An instance of the NuScenes class.
     :param eval_boxes: An instance of the EvalBoxes class.
     :param max_dist: Maps the detection name to the eval distance threshold for that class.
-    :param class_field: One of ``tracking_name`` or ``detection_name``
+    :param class_field: One of "tracking_name" when you feed ``eval_boxes`` of type ``TrackingBox`` or
+                        "detection_name" when you feed ``eval_boxes`` of type ``DetectionBox``.
     :param verbose: Whether to print to stdout.
     """
     # Accumulators for number of filtered boxes.
