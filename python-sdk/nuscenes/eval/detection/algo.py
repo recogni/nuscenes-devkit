@@ -1,6 +1,6 @@
 # nuScenes dev-kit.
 # Code written by Oscar Beijbom, 2019.
-
+import logging
 from typing import Callable
 
 import numpy as np
@@ -43,6 +43,8 @@ def accumulate(gt_boxes: EvalBoxes,
 
     # Organize the predictions in a single list.
     pred_boxes_list = [box for box in pred_boxes.all if box.detection_name == class_name]
+    if not pred_boxes_list:
+        logging.warning(f"There are no predictions for class {class_name}")
     pred_confs = [box.detection_score for box in pred_boxes_list]
 
     if verbose:
