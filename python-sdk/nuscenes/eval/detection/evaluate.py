@@ -101,7 +101,6 @@ class DetectionEval:
             assert self.pred_boxes.all, f"there are no pred_boxes after load_prediction() from {self.result_path=}"
         elif result is not None:
             self.pred_boxes = result
-            assert self.pred_boxes.all, "there are no pred_boxes in `result`"
         else:
             raise ValueError("need to either specify `result_path` or pass predicted boxes via `result` argument")
 
@@ -130,11 +129,10 @@ class DetectionEval:
         # Filter boxes (distance, points per box, etc.).
         if verbose:
             print('Filtering predictions')
-        self.pred_boxes = filter_eval_boxes(nusc, self.pred_boxes, self.cfg.class_range, verbose=verbose)
-        assert self.pred_boxes.all, f"there are no pred_boxes after filter_eval_boxes() with {self.cfg.class_range=}"
+        self.pred_boxes = filter_eval_boxes(nusc, self.pred_boxes, self.cfg.class_range, class_field="detection_name", verbose=verbose)
         if verbose:
             print('Filtering ground truth annotations')
-        self.gt_boxes = filter_eval_boxes(nusc, self.gt_boxes, self.cfg.class_range, verbose=verbose)
+        self.gt_boxes = filter_eval_boxes(nusc, self.gt_boxes, self.cfg.class_range, class_field="detection_name", verbose=verbose)
         assert self.gt_boxes.all, f"there are no gt_boxes after filter_eval_boxes() with {self.cfg.class_range=}"
         self.sample_tokens = self.gt_boxes.sample_tokens
 
