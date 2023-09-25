@@ -15,7 +15,7 @@ for req_path in (setup_dir / 'requirements.txt').read_text().splitlines():
 
 setuptools.setup(
     name='nuscenes-devkit',
-    version='1.1.10',
+    version='1.1.11',
     author='Holger Caesar, Oscar Beijbom, Qiang Xu, Varun Bankiti, Alex H. Lang, Sourabh Vora, Venice Erin Liong, '
            'Sergi Widjaja, Kiwoo Shin, Caglayan Dicle, Freddy Boulton, Whye Kit Fong, Asha Asvathaman, Lubing Zhou '
            'et al.',
