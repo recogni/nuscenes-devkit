@@ -11,7 +11,7 @@ from pyquaternion import Quaternion
 from nuscenes.eval.common.config import config_factory
 from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.common.utils import center_distance
-from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
+from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp, match_boxes, stats_from_matches
 from nuscenes.eval.detection.constants import TP_METRICS
 from nuscenes.eval.detection.data_classes import DetectionMetrics, DetectionMetricData, DetectionBox, \
     DetectionMetricDataList
@@ -82,6 +82,84 @@ class TestAlgo(unittest.TestCase):
             pred.add_boxes(str(sample_itt), this_pred)
 
         return gt, pred
+
+    @staticmethod
+    def _mock_results_multiple(nsamples, ngt, npred, detection_names):
+
+        def random_attr():
+            """
+            This is the most straight-forward way to generate a random attribute.
+            Not currently used b/c we want the test fixture to be back-wards compatible.
+            """
+            # Get relevant attributes.
+
+            return ''
+
+        pred = EvalBoxes()
+        gt = EvalBoxes()
+
+        for sample_itt in range(nsamples):
+
+            this_gt = []
+
+            for box_itt in range(ngt):
+                translation_xy = tuple(np.random.rand(2) * 15)
+                this_gt.append(DetectionBox(
+                    sample_token=str(sample_itt),
+                    translation=(translation_xy[0], translation_xy[1], 0.0),
+                    size=tuple(np.random.rand(3)*4),
+                    rotation=tuple(np.random.rand(4)),
+                    velocity=tuple(np.random.rand(3)[:2]*4),
+                    detection_name=random.choice(detection_names),
+                    detection_score=random.random(),
+                    attribute_name=random_attr(),
+                    ego_translation=(random.random() * 10, 0, 0),
+                ))
+            gt.add_boxes(str(sample_itt), this_gt)
+
+        for sample_itt in range(nsamples):
+            this_pred = []
+
+            for box_itt in range(npred):
+                translation_xy = tuple(np.random.rand(2) * 10)
+                this_pred.append(DetectionBox(
+                    sample_token=str(sample_itt),
+                    translation=(translation_xy[0], translation_xy[1], 0.0),
+                    size=tuple(np.random.rand(3) * 4),
+                    rotation=tuple(np.random.rand(4)),
+                    velocity=tuple(np.random.rand(3)[:2] * 4),
+                    detection_name=random.choice(detection_names),
+                    detection_score=random.random(),
+                    attribute_name=random_attr(),
+                    ego_translation=(random.random() * 10, 0, 0),
+                ))
+
+            pred.add_boxes(str(sample_itt), this_pred)
+
+        return gt, pred
+
+
+    def test_equivalency(self):
+        """
+        This tests runs tests the equivalency of the match_boxes and the NuScenes code.
+        """
+
+        random.seed(42)
+        np.random.seed(42)
+
+        gt, pred = self._mock_results_multiple(200, 50, 70, list(self.cfg.class_names))
+        for dist_th in self.cfg.dist_ths:
+            matches = match_boxes(gt, pred, dist_th=dist_th, dist_fcn=center_distance)
+            for class_name in self.cfg.class_names:
+                acc = accumulate(gt, pred, class_name, center_distance, dist_th=dist_th)
+                new_acc = stats_from_matches(matches, class_name)
+                for name in ["attr_err", "confidence",
+                             "orient_err", "precision", "recall", "scale_err",
+                             "trans_err", "vel_err"]:
+                    diff = np.sum(np.abs(getattr(acc, name) - getattr(new_acc, name)))
+                    self.assertAlmostEqual(diff, 0.0, msg=(class_name, dist_th, name))
+                for name in ["max_recall", "max_recall_ind", "nelem"]:
+                    self.assertEqual(getattr(acc, name), getattr(new_acc, name), msg=(class_name, dist_th, name))
 
     def test_nd_score(self):
         """
