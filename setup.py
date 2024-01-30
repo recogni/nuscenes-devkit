@@ -35,6 +35,7 @@ packages = [d.replace('/', '.').replace('{}.'.format(rootdir), '') for d in get_
 
 # Filter out Python cache folders
 packages = [p for p in packages if not p.endswith('__pycache__')]
+packages = [p for p in packages if not p.endswith('egg-info')]
 
 setuptools.setup(
     name='nuscenes-devkit',
