@@ -1,13 +1,13 @@
 import os
-
 import setuptools
 
-with open('../README.md', 'r') as fh:
+with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 # Since nuScenes 2.0 the requirements are stored in separate files.
-with open('requirements.txt') as f:
+with open('requirements/requirements.txt') as f:
     req_paths = f.read().splitlines()
+
 requirements = []
 for req_path in req_paths:
     if req_path.startswith('#'):
@@ -30,12 +30,12 @@ def get_dirlist(_rootdir):
 
 
 # Get subfolders recursively
-os.chdir('..')
 rootdir = 'python-sdk'
 packages = [d.replace('/', '.').replace('{}.'.format(rootdir), '') for d in get_dirlist(rootdir)]
 
 # Filter out Python cache folders
 packages = [p for p in packages if not p.endswith('__pycache__')]
+packages = [p for p in packages if not p.endswith('egg-info')]
 
 setuptools.setup(
     name='nuscenes-devkit',
