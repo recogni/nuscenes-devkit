@@ -5,6 +5,12 @@ with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 # Since nuScenes 2.0 the requirements are stored in separate files.
+<<<<<<< HEAD
+=======
+with open('requirements/requirements.txt') as f:
+    req_paths = f.read().splitlines()
+
+>>>>>>> e827a5b... update req references
 requirements = []
 for req_path in (setup_dir / 'requirements.txt').read_text().splitlines():
     if req_path.startswith('#'):
