@@ -1,5 +1,7 @@
-# nuScenes devkit
-Welcome to the devkit of the [nuScenes](https://www.nuscenes.org/nuscenes) and [nuImages](https://www.nuscenes.org/nuimages) datasets.
+# <img src="docs/nutonomy-logo-big-r.svg" width="182px" height="46px" style="vertical-align: middle" /> nuScenes™ devkit
+Welcome to the nuTonomy® downloadable driverless vehicle software page. Click on the green box above labeled "Code" to download a copy of the software described below.
+
+
 ![](https://www.nuscenes.org/public/images/road.jpg)
 
 ## Overview
@@ -21,6 +23,7 @@ Welcome to the devkit of the [nuScenes](https://www.nuscenes.org/nuscenes) and [
 - [Citation](#citation)
 
 ## Changelog
+- Sep. 25, 2023: Devkit v1.1.11: Specify version for various pip requirements.
 - Feb. 13, 2023: Devkit v1.1.10: Specify version for various pip requirements.
 - Sep. 20, 2021: Devkit v1.1.9: Refactor tracking eval code for custom datasets with different classes.
 - Sep. 17, 2021: Devkit v1.1.8: Add PAT metric to Panoptic nuScenes.

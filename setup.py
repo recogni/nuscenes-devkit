@@ -1,32 +1,56 @@
-from pathlib import Path
-
+import os
 import setuptools
 
-package_dir = 'python-sdk'
-setup_dir = Path(__file__).parent / 'setup'
+with open('README.md', 'r') as fh:
+    long_description = fh.read()
 
 # Since nuScenes 2.0 the requirements are stored in separate files.
+with open('requirements/requirements.txt') as f:
+    req_paths = f.read().splitlines()
+
 requirements = []
-for req_path in (setup_dir / 'requirements.txt').read_text().splitlines():
+for req_path in req_paths:
     if req_path.startswith('#'):
         continue
     req_path = req_path.replace('-r ', '')
-    requirements += (setup_dir / req_path).read_text().splitlines()
+    with open(req_path) as f:
+        requirements += f.read().splitlines()
+
+
+def get_dirlist(_rootdir):
+    dirlist = []
+
+    with os.scandir(_rootdir) as rit:
+        for entry in rit:
+            if not entry.name.startswith('.') and entry.is_dir():
+                dirlist.append(entry.path)
+                dirlist += get_dirlist(entry.path)
+
+    return dirlist
+
+
+# Get subfolders recursively
+rootdir = 'python-sdk'
+packages = [d.replace('/', '.').replace('{}.'.format(rootdir), '') for d in get_dirlist(rootdir)]
+
+# Filter out Python cache folders
+packages = [p for p in packages if not p.endswith('__pycache__')]
+packages = [p for p in packages if not p.endswith('egg-info')]
 
 setuptools.setup(
     name='nuscenes-devkit',
-    version='1.1.10',
+    version='1.1.11',
     author='Holger Caesar, Oscar Beijbom, Qiang Xu, Varun Bankiti, Alex H. Lang, Sourabh Vora, Venice Erin Liong, '
            'Sergi Widjaja, Kiwoo Shin, Caglayan Dicle, Freddy Boulton, Whye Kit Fong, Asha Asvathaman, Lubing Zhou '
            'et al.',
     author_email='nuscenes@motional.com',
     description='The official devkit of the nuScenes dataset (www.nuscenes.org).',
-    long_description=Path('README.md').read_text(),
+    long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/nutonomy/nuscenes-devkit',
     python_requires='>=3.6',
     install_requires=requirements,
-    packages=setuptools.find_packages(package_dir),
+    packages=packages,
     package_dir={'': 'python-sdk'},
     package_data={'': ['*.json']},
     include_package_data=True,
@@ -35,5 +59,5 @@ setuptools.setup(
         'Operating System :: OS Independent',
         'License :: Free for non-commercial use'
     ],
-    license='cc-by-nc-sa-4.0'
+    license='apache-2.0'
 )
