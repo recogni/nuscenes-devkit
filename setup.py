@@ -5,14 +5,11 @@ with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 # Since nuScenes 2.0 the requirements are stored in separate files.
-<<<<<<< HEAD
-=======
 with open('requirements/requirements.txt') as f:
     req_paths = f.read().splitlines()
 
->>>>>>> e827a5b... update req references
 requirements = []
-for req_path in (setup_dir / 'requirements.txt').read_text().splitlines():
+for req_path in req_paths:
     if req_path.startswith('#'):
         continue
     req_path = req_path.replace('-r ', '')
@@ -48,12 +45,12 @@ setuptools.setup(
            'et al.',
     author_email='nuscenes@motional.com',
     description='The official devkit of the nuScenes dataset (www.nuscenes.org).',
-    long_description=Path('README.md').read_text(),
+    long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/nutonomy/nuscenes-devkit',
     python_requires='>=3.6',
     install_requires=requirements,
-    packages=setuptools.find_packages(package_dir),
+    packages=packages,
     package_dir={'': 'python-sdk'},
     package_data={'': ['*.json']},
     include_package_data=True,
