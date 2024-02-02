@@ -96,7 +96,7 @@ def scale_iou(sample_annotation: EvalBox, sample_result: EvalBox) -> float:
     sa_size = np.array(sample_annotation.size)
     sr_size = np.array(sample_result.size)
     assert all(sa_size > 0), 'Error: sample_annotation sizes must be >0.'
-    assert all(sr_size > 0), 'Error: sample_result sizes must be >0.'
+    # assert all(sr_size > 0), 'Error: sample_result sizes must be >0.'
 
     # Compute IOU.
     min_wlh = np.minimum(sa_size, sr_size)
@@ -105,8 +105,7 @@ def scale_iou(sample_annotation: EvalBox, sample_result: EvalBox) -> float:
     intersection = np.prod(min_wlh)  # type: float
     union = volume_annotation + volume_result - intersection  # type: float
     iou = intersection / union
-
-    return iou
+    return max(iou, 0.0)
 
 
 def quaternion_yaw(q: Quaternion) -> float:

@@ -4,6 +4,7 @@
 import json
 from typing import Dict, Tuple
 
+import fsspec
 import numpy as np
 import tqdm
 from pyquaternion import Quaternion
@@ -30,7 +31,7 @@ def load_prediction(result_path: str, max_boxes_per_sample: int, box_cls, verbos
     """
 
     # Load from file and check that the format is correct.
-    with open(result_path) as f:
+    with fsspec.open(result_path) as f:
         data = json.load(f)
     assert 'results' in data, 'Error: No field `results` in result file. Please note that the result format changed.' \
                               'See https://www.nuscenes.org/object-detection for more information.'
@@ -207,17 +208,17 @@ def add_center_dist(nusc: NuScenes,
 def filter_eval_boxes(nusc: NuScenes,
                       eval_boxes: EvalBoxes,
                       max_dist: Dict[str, float],
+                      class_field: str,
                       verbose: bool = False) -> EvalBoxes:
     """
     Applies filtering to boxes. Distance, bike-racks and points per box.
     :param nusc: An instance of the NuScenes class.
     :param eval_boxes: An instance of the EvalBoxes class.
     :param max_dist: Maps the detection name to the eval distance threshold for that class.
+    :param class_field: One of "tracking_name" when you feed ``eval_boxes`` of type ``TrackingBox`` or
+                        "detection_name" when you feed ``eval_boxes`` of type ``DetectionBox``.
     :param verbose: Whether to print to stdout.
     """
-    # Retrieve box type for detectipn/tracking boxes.
-    class_field = _get_box_class_field(eval_boxes)
-
     # Accumulators for number of filtered boxes.
     total, dist_filter, point_filter, bike_rack_filter = 0, 0, 0, 0
     for ind, sample_token in enumerate(eval_boxes.sample_tokens):
@@ -259,27 +260,3 @@ def filter_eval_boxes(nusc: NuScenes,
         print("=> After bike rack filtering: %d" % bike_rack_filter)
 
     return eval_boxes
-
-
-def _get_box_class_field(eval_boxes: EvalBoxes) -> str:
-    """
-    Retrieve the name of the class field in the boxes.
-    This parses through all boxes until it finds a valid box.
-    If there are no valid boxes, this function throws an exception.
-    :param eval_boxes: The EvalBoxes used for evaluation.
-    :return: The name of the class field in the boxes, e.g. detection_name or tracking_name.
-    """
-    assert len(eval_boxes.boxes) > 0
-    box = None
-    for val in eval_boxes.boxes.values():
-        if len(val) > 0:
-            box = val[0]
-            break
-    if isinstance(box, DetectionBox):
-        class_field = 'detection_name'
-    elif isinstance(box, TrackingBox):
-        class_field = 'tracking_name'
-    else:
-        raise Exception('Error: Invalid box type: %s' % box)
-
-    return class_field

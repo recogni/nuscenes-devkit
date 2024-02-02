@@ -6,8 +6,10 @@ import json
 import os
 import random
 import time
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
+import copy
+import fsspec
 import numpy as np
 
 from nuscenes import NuScenes
@@ -16,8 +18,12 @@ from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.common.loaders import load_prediction, load_gt, add_center_dist, filter_eval_boxes
 from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
 from nuscenes.eval.detection.constants import TP_METRICS
-from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, DetectionBox, \
-    DetectionMetricDataList
+from nuscenes.eval.detection.data_classes import (
+    DetectionConfig,
+    DetectionMetrics,
+    DetectionBox,
+    DetectionMetricDataList,
+)
 from nuscenes.eval.detection.render import summary_plot, class_pr_curve, class_tp_curve, dist_pr_curve, visualize_sample
 
 
@@ -41,48 +47,80 @@ class DetectionEval:
 
     Please see https://www.nuscenes.org/object-detection for more details.
     """
-    def __init__(self,
-                 nusc: NuScenes,
-                 config: DetectionConfig,
-                 result_path: str,
-                 eval_set: str,
-                 output_dir: str = None,
-                 verbose: bool = True):
+
+    def __init__(
+        self,
+        nusc: NuScenes,
+        config: DetectionConfig,
+        eval_set,
+        result:Optional[EvalBoxes] = None,
+        result_path: str = "",
+        output_dir: str = None,
+        force_eval_subset: bool = False,
+        verbose: bool = True,
+    ):
         """
         Initialize a DetectionEval object.
         :param nusc: A NuScenes object.
         :param config: A DetectionConfig object.
-        :param result_path: Path of the nuScenes JSON result file.
         :param eval_set: The dataset split to evaluate on, e.g. train, val or test.
+        :param result: EvalBoxes to use for evaluation agains ground-truth.
+        :param result_path: Path of the nuScenes JSON result file.
         :param output_dir: Folder to save plots and results to.
         :param verbose: Whether to print to stdout.
         """
         self.nusc = nusc
+        self.fs_res = fsspec.filesystem("gcs" if result_path.startswith("gs://") else "file")
+        self.fs_output_dir = fsspec.filesystem("gcs" if output_dir and output_dir.startswith("gs://") else "file")
         self.result_path = result_path
+        self.result = result
         self.eval_set = eval_set
         self.output_dir = output_dir
         self.verbose = verbose
         self.cfg = config
 
         # Check result file exists.
-        assert os.path.exists(result_path), 'Error: The result file does not exist!'
+        if result_path:
+            assert self.fs_res.exists(result_path), "Error: The result file does not exist!"
 
         # Make dirs.
-        self.plot_dir = os.path.join(self.output_dir, 'plots')
-        if not os.path.isdir(self.output_dir):
-            os.makedirs(self.output_dir)
-        if not os.path.isdir(self.plot_dir):
-            os.makedirs(self.plot_dir)
+        if self.output_dir:
+            self.plot_dir = os.path.join(self.output_dir, "plots")
+            if not self.fs_output_dir.isdir(self.output_dir):
+                os.makedirs(self.output_dir)
+            if not self.fs_output_dir.isdir(self.plot_dir):
+                os.makedirs(self.plot_dir)
 
         # Load data.
         if verbose:
-            print('Initializing nuScenes detection evaluation')
-        self.pred_boxes, self.meta = load_prediction(self.result_path, self.cfg.max_boxes_per_sample, DetectionBox,
-                                                     verbose=verbose)
-        self.gt_boxes = load_gt(self.nusc, self.eval_set, DetectionBox, verbose=verbose)
+            print("Initializing nuScenes detection evaluation")
+        if result_path:
+            self.pred_boxes, self.meta = load_prediction(
+                self.result_path, self.cfg.max_boxes_per_sample, DetectionBox, verbose=verbose
+            )
+            assert self.pred_boxes.all, f"there are no pred_boxes after load_prediction() from {self.result_path=}"
+        elif result is not None:
+            self.pred_boxes = result
+        else:
+            raise ValueError("need to either specify `result_path` or pass predicted boxes via `result` argument")
 
-        assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens), \
-            "Samples in split doesn't match samples in predictions."
+        self.gt_boxes = load_gt(self.nusc, self.eval_set, DetectionBox, verbose=verbose)
+        assert self.gt_boxes.all, f"there are no gt_boxes after load_gt() with {self.eval_set=}"
+
+        if force_eval_subset:
+            eval_boxes_subset = EvalBoxes()
+            for sample_token in self.pred_boxes.sample_tokens:
+                assert sample_token in self.gt_boxes.sample_tokens, f"got predictions for {sample_token=}, but " \
+                                                                    f"this token is not among the tokens of " \
+                                                                    f"the specified {eval_set=} "
+                eval_boxes_subset.add_boxes(sample_token, copy.deepcopy(self.gt_boxes[sample_token]))
+            self.gt_boxes = eval_boxes_subset
+            assert self.gt_boxes.all, f"there are no gt_boxes with force_eval_subset for the " \
+                                      f"tokens {self.pred_boxes.sample_tokens}"
+
+        assert set(self.pred_boxes.sample_tokens) == set(
+            self.gt_boxes.sample_tokens
+        ), "Samples in split doesn't match samples in predictions."
 
         # Add center distances.
         self.pred_boxes = add_center_dist(nusc, self.pred_boxes)
@@ -91,11 +129,11 @@ class DetectionEval:
         # Filter boxes (distance, points per box, etc.).
         if verbose:
             print('Filtering predictions')
-        self.pred_boxes = filter_eval_boxes(nusc, self.pred_boxes, self.cfg.class_range, verbose=verbose)
+        self.pred_boxes = filter_eval_boxes(nusc, self.pred_boxes, self.cfg.class_range, class_field="detection_name", verbose=verbose)
         if verbose:
             print('Filtering ground truth annotations')
-        self.gt_boxes = filter_eval_boxes(nusc, self.gt_boxes, self.cfg.class_range, verbose=verbose)
-
+        self.gt_boxes = filter_eval_boxes(nusc, self.gt_boxes, self.cfg.class_range, class_field="detection_name", verbose=verbose)
+        assert self.gt_boxes.all, f"there are no gt_boxes after filter_eval_boxes() with {self.cfg.class_range=}"
         self.sample_tokens = self.gt_boxes.sample_tokens
 
     def evaluate(self) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
@@ -180,7 +218,7 @@ class DetectionEval:
         :param render_curves: Whether to render PR and TP curves to disk.
         :return: A dict that stores the high-level metrics and meta data.
         """
-        if plot_examples > 0:
+        if plot_examples > 0 and self.output_dir:
             # Select a random but fixed subset to plot.
             random.seed(42)
             sample_tokens = list(self.sample_tokens)
@@ -189,7 +227,7 @@ class DetectionEval:
 
             # Visualize samples.
             example_dir = os.path.join(self.output_dir, 'examples')
-            if not os.path.isdir(example_dir):
+            if not self.fs_output_dir.isdir(example_dir):
                 os.mkdir(example_dir)
             for sample_token in sample_tokens:
                 visualize_sample(self.nusc,

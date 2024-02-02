@@ -3,10 +3,10 @@
 
 import json
 import math
-import os
-import os.path as osp
 import sys
+import os.path as osp
 import time
+import fsspec
 from datetime import datetime
 from typing import Tuple, List, Iterable
 
@@ -53,13 +53,14 @@ class NuScenes:
         :param verbose: Whether to print status messages during load.
         :param map_resolution: Resolution of maps (meters).
         """
+        self.fs = fsspec.filesystem("gcs" if "gs://" in dataroot else "file")
         self.version = version
         self.dataroot = dataroot
         self.verbose = verbose
         self.table_names = ['category', 'attribute', 'visibility', 'instance', 'sensor', 'calibrated_sensor',
                             'ego_pose', 'log', 'scene', 'sample', 'sample_data', 'sample_annotation', 'map']
 
-        assert osp.exists(self.table_root), 'Database version not found: {}'.format(self.table_root)
+        assert self.fs.exists(self.table_root), 'Database version not found: {}'.format(self.table_root)
 
         start_time = time.time()
         if verbose:
@@ -83,7 +84,7 @@ class NuScenes:
         # Initialize the colormap which maps from class names to RGB values.
         self.colormap = get_colormap()
 
-        lidar_tasks = [t for t in ['lidarseg', 'panoptic'] if osp.exists(osp.join(self.table_root, t + '.json'))]
+        lidar_tasks = [t for t in ['lidarseg', 'panoptic'] if self.fs.exists(osp.join(self.table_root, t + '.json'))]
         if len(lidar_tasks) > 0:
             self.lidarseg_idx2name_mapping = dict()
             self.lidarseg_name2idx_mapping = dict()
@@ -97,7 +98,7 @@ class NuScenes:
                 self.panoptic = self.__load_table__(lidar_task)
 
             setattr(self, lidar_task, self.__load_table__(lidar_task))
-            label_files = os.listdir(os.path.join(self.dataroot, lidar_task, self.version))
+            label_files = self.fs.listdir(osp.join(self.dataroot, lidar_task, self.version))
             num_label_files = len([name for name in label_files if (name.endswith('.bin') or name.endswith('.npz'))])
             num_lidarseg_recs = len(getattr(self, lidar_task))
             assert num_lidarseg_recs == num_label_files, \
@@ -108,7 +109,7 @@ class NuScenes:
                                   for c in sorted(self.category, key=lambda k: k['index'])})
 
         # If available, also load the image_annotations table created by export_2d_annotations_as_json().
-        if osp.exists(osp.join(self.table_root, 'image_annotations.json')):
+        if self.fs.exists(osp.join(self.table_root, 'image_annotations.json')):
             self.image_annotations = self.__load_table__('image_annotations')
 
         # Initialize map mask for each map record.
@@ -133,7 +134,7 @@ class NuScenes:
 
     def __load_table__(self, table_name) -> dict:
         """ Loads a table. """
-        with open(osp.join(self.table_root, '{}.json'.format(table_name))) as f:
+        with self.fs.open(osp.join(self.table_root, '{}.json'.format(table_name))) as f:
             table = json.load(f)
         return table
 
@@ -454,7 +455,7 @@ class NuScenes:
 
         if lidarseg_preds_bin_path:
             lidarseg_labels_filename = lidarseg_preds_bin_path
-            assert os.path.exists(lidarseg_labels_filename), \
+            assert self.fs.exists(lidarseg_labels_filename), \
                 'Error: Unable to find {} to load the predictions for sample token {} ' \
                 '(lidar sample data token {}) from.'.format(lidarseg_labels_filename, sample_token, ref_sd_token)
 
@@ -465,7 +466,7 @@ class NuScenes:
                                             ' for your predictions, pass a path to the appropriate .bin/npz file using'\
                                             ' the lidarseg_preds_bin_path argument.'.format(gt_from, self.version)
             lidar_sd_token = self.get('sample', sample_token)['data']['LIDAR_TOP']
-            lidarseg_labels_filename = os.path.join(self.dataroot,
+            lidarseg_labels_filename = osp.join(self.dataroot,
                                                     self.get(gt_from, lidar_sd_token)['filename'])
 
             header = '===== Statistics for ' + sample_token + ' ====='
@@ -876,7 +877,8 @@ class NuScenesExplorer:
             pc = LidarPointCloud.from_file(pcl_path)
         else:
             pc = RadarPointCloud.from_file(pcl_path)
-        im = Image.open(osp.join(self.nusc.dataroot, cam['filename']))
+        with self.nusc.fs.open(osp.join(self.nusc.dataroot, cam['filename']),"rb") as f:
+            im = Image.open(f)
 
         # Points live in the point sensor frame. So they need to be transformed via global to the image plane.
         # First step: transform the pointcloud to the ego vehicle frame for the timestamp of the sweep.
@@ -923,7 +925,7 @@ class NuScenesExplorer:
             if lidarseg_preds_bin_path:
                 sample_token = self.nusc.get('sample_data', pointsensor_token)['sample_token']
                 lidarseg_labels_filename = lidarseg_preds_bin_path
-                assert os.path.exists(lidarseg_labels_filename), \
+                assert self.nusc.fs.exists(lidarseg_labels_filename), \
                     'Error: Unable to find {} to load the predictions for sample token {} (lidar ' \
                     'sample data token {}) from.'.format(lidarseg_labels_filename, sample_token, pointsensor_token)
             else:
@@ -1350,7 +1352,7 @@ class NuScenesExplorer:
                 if lidarseg_preds_bin_path:
                     sample_token = self.nusc.get('sample_data', sample_data_token)['sample_token']
                     lidarseg_labels_filename = lidarseg_preds_bin_path
-                    assert os.path.exists(lidarseg_labels_filename), \
+                    assert self.nusc.fs.exists(lidarseg_labels_filename), \
                         'Error: Unable to find {} to load the predictions for sample token {} (lidar ' \
                         'sample data token {}) from.'.format(lidarseg_labels_filename, sample_token, sample_data_token)
                 else:
@@ -1437,7 +1439,8 @@ class NuScenesExplorer:
             # Load boxes and image.
             data_path, boxes, camera_intrinsic = self.nusc.get_sample_data(sample_data_token,
                                                                            box_vis_level=box_vis_level)
-            data = Image.open(data_path)
+            with self.nusc.fs.open(data_path, "rb") as f:
+                data = Image.open(data_path)
 
             # Init axes.
             if ax is None:
@@ -1521,7 +1524,8 @@ class NuScenesExplorer:
 
         # Plot CAMERA view.
         data_path, boxes, camera_intrinsic = self.nusc.get_sample_data(cam, selected_anntokens=[anntoken])
-        im = Image.open(data_path)
+        with self.nusc.fs.open(data_path, "rb") as f:
+            im = Image.open(f)
         axes[1].imshow(im)
         axes[1].set_title(self.nusc.get('sample_data', cam)['channel'])
         axes[1].axis('off')
@@ -1667,9 +1671,10 @@ class NuScenesExplorer:
                                                                                 box_vis_level=BoxVisibility.ANY)
 
                     # Load and render.
-                    if not osp.exists(impath):
+                    if not self.nusc.fs.exists(impath):
                         raise Exception('Error: Missing image %s' % impath)
-                    im = cv2.imread(impath)
+                    with self.nusc.fs.open(impath, "rb") as f:
+                        im = cv2.imdecode(np.frombuffer(f.read(),dtype=np.uint8),cv2.IMREAD_COLOR)
                     for box in boxes:
                         c = self.get_color(box.name)
                         box.render_cv2(im, view=camera_intrinsic, normalize=True, colors=(c, c, c))
@@ -1750,9 +1755,10 @@ class NuScenesExplorer:
                                                                         box_vis_level=BoxVisibility.ANY)
 
             # Load and render.
-            if not osp.exists(impath):
+            if not self.nusc.fs.exists(impath):
                 raise Exception('Error: Missing image %s' % impath)
-            im = cv2.imread(impath)
+            with self.nusc.fs.open(impath, "rb") as f:
+                im = cv2.imdecode(np.frombuffer(f.read(), dtype=np.uint8), cv2.IMREAD_COLOR)
             for box in boxes:
                 c = self.get_color(box.name)
                 box.render_cv2(im, view=camera_intrinsic, normalize=True, colors=(c, c, c))
@@ -1922,7 +1928,9 @@ class NuScenesExplorer:
 
             # We need to get the image's original height and width as the boxes returned by get_sample_data
             # are scaled wrt to that.
-            h, w, c = cv2.imread(impath).shape
+            with self.nusc.fs.open(impath, "rb") as f:
+                im = cv2.imdecode(np.frombuffer(f.read(), dtype=np.uint8), cv2.IMREAD_COLOR)
+            h, w, c = im.shape
 
             # Place the projected pointcloud and lidarseg labels onto the image.
             mat = plt_to_cv2(points, coloring, im, (w, h), dpi=dpi)
@@ -1992,7 +2000,7 @@ class NuScenesExplorer:
         assert imsize[0] / imsize[1] == 16 / 9, 'Error: Aspect ratio should be 16/9.'
 
         if lidarseg_preds_folder:
-            assert(os.path.isdir(lidarseg_preds_folder)), \
+            assert(self.nusc.fs.isdir(lidarseg_preds_folder)), \
                 'Error:  The lidarseg predictions folder ({}) does not exist.'.format(lidarseg_preds_folder)
 
         save_as_vid = False
@@ -2000,7 +2008,7 @@ class NuScenesExplorer:
             assert render_mode in ['video', 'image'], 'Error: For the renderings to be saved to {}, either `video` ' \
                                                       'or `image` must be specified for render_mode. {} is ' \
                                                       'not a valid mode.'.format(out_folder, render_mode)
-            assert os.path.isdir(out_folder), 'Error: {} does not exist.'.format(out_folder)
+            assert self.nusc.fs.isdir(out_folder), 'Error: {} does not exist.'.format(out_folder)
             if render_mode == 'video':
                 save_as_vid = True
 
@@ -2024,7 +2032,7 @@ class NuScenesExplorer:
             name = None
 
         if save_as_vid:
-            out_path = os.path.join(out_folder, scene_record['name'] + '_' + channel + '.avi')
+            out_path = osp.join(out_folder, scene_record['name'] + '_' + channel + '.avi')
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             out = cv2.VideoWriter(out_path, fourcc, freq, imsize)
         else:
@@ -2039,7 +2047,7 @@ class NuScenesExplorer:
             # Set filename of the image.
             camera_token = sample_record['data'][channel]
             cam = self.nusc.get('sample_data', camera_token)
-            filename = scene_record['name'] + '_' + channel + '_' + os.path.basename(cam['filename'])
+            filename = scene_record['name'] + '_' + channel + '_' + osp.basename(cam['filename'])
 
             # Determine whether to render lidarseg points from ground truth or predictions.
             pointsensor_token = sample_record['data']['LIDAR_TOP']
@@ -2079,7 +2087,7 @@ class NuScenesExplorer:
             if save_as_vid:
                 out.write(mat)
             elif not no_points_in_mat and out_folder:
-                cv2.imwrite(os.path.join(out_folder, filename), mat)
+                cv2.imwrite(osp.join(out_folder, filename), mat)
             else:
                 pass
 
@@ -2130,7 +2138,7 @@ class NuScenesExplorer:
         assert imsize[0] / imsize[1] == 16 / 9, "Aspect ratio should be 16/9."
 
         if lidarseg_preds_folder:
-            assert(os.path.isdir(lidarseg_preds_folder)), \
+            assert(self.nusc.fs.isdir(lidarseg_preds_folder)), \
                 'Error: The lidarseg predictions folder ({}) does not exist.'.format(lidarseg_preds_folder)
 
         # Get records from DB.
@@ -2165,9 +2173,9 @@ class NuScenesExplorer:
         slate = np.ones((2 * imsize[1], 3 * imsize[0], 3), np.uint8)
 
         if out_path:
-            path_to_file, filename = os.path.split(out_path)
-            assert os.path.isdir(path_to_file), 'Error: {} does not exist.'.format(path_to_file)
-            assert os.path.splitext(filename)[-1] == '.avi', 'Error: Video can only be saved in .avi format.'
+            path_to_file, filename = osp.split(out_path)
+            assert self.nusc.fs.isdir(path_to_file), 'Error: {} does not exist.'.format(path_to_file)
+            assert osp.splitext(filename)[-1] == '.avi', 'Error: Video can only be saved in .avi format.'
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             out = cv2.VideoWriter(out_path, fourcc, freq, slate.shape[1::-1])
         else:
